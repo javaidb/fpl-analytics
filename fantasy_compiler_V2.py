@@ -1360,6 +1360,9 @@ class DataPlotter:
     @classmethod
     def plot_multi_stats(self,param,dataset,values,remove_FPL15 = False):
         df = DataTransformer.all_df
+        if param not in df.columns:
+            print(f"Incorrect 'param' format, should be one of: {list(df.columns)}")
+            return
         if dataset in ['specialized','myteam']:
             if dataset == 'specialized':
                 pos = values[0]
