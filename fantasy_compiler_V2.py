@@ -1358,22 +1358,28 @@ class DataPlotter:
         return team_colors[team_id]
 
     @classmethod
-    def plot_multi_stats(self,param,dataset,values,remove_FPL15 = True):
+    def plot_multi_stats(self,param,dataset,values,remove_FPL15 = False):
         df = DataTransformer.all_df
-        if dataset == 'specialized':
-            pos = values[0]
-            lookback = values[1]
-            num_players = values[2]
-            df = df.loc[df['position'] == pos]
-            if remove_FPL15:
-                df = df.loc[~df['id_player'].isin(MyTeam.df_fpl.id.to_list())]
-            def average_last(lst):
-                return sum(lst[-lookback:]) / lookback
-            df[f"{param}_avg"] = df.apply(lambda x: average_last(x[param]), axis = 1)
-            df_sorted = df.sort_values(by=f"{param}_avg", ascending=False).head(num_players)   
+        if dataset in ['specialized','myteam']:
+            if dataset == 'specialized':
+                pos = values[0]
+                lookback = values[1]
+                num_players = values[2]
+                df = df.loc[df['position'] == pos]
+                if remove_FPL15:
+                    df = df.loc[~df['id_player'].isin(MyTeam.df_fpl.id.to_list())]
+            elif dataset == 'myteam':
+                pos = values[0]
+                lookback = 6
+                df = df.loc[(df['id_player'].isin(MyTeam.df_fpl.id.to_list())) & (df['position'] == pos)]
+                num_players = len(df)
+        def average_last(lst):
+            return sum(lst[-lookback:]) / lookback
+        df[f"{param}_avg"] = df.apply(lambda x: average_last(x[param]), axis = 1)
+        df_sorted = df.sort_values(by=f"{param}_avg", ascending=False).head(num_players)
         data = df_sorted[['id_player','player','round',param,f"{param}_avg"]]
         data = data.reset_index(drop = True)
-        num_cols = 7
+        num_cols = min(7,len(data))
         num_rows = (len(data) + 2) // num_cols
         fig = make_subplots(rows=num_rows, cols=num_cols, subplot_titles=data['player'].tolist())
         for i, d in data.iterrows():
@@ -1392,7 +1398,7 @@ class DataPlotter:
                 fig.add_hline(y=d[f"{param}_avg"], line_dash='dot', line_width=2, line_color='black', row=row, col=col)
             fig.update_xaxes(nticks = 6, row=row, col=col)
             fig.update_yaxes(nticks = 5, row=row, col=col)
-        fig.update_layout(height=1000, width=330*num_cols)
+        fig.update_layout(height=350*(num_rows), width=350*num_cols)
         fig.update_layout(title=f'{param} vs GW',showlegend=False)
         fig.update_xaxes(title='GW')
         fig.update_yaxes(title=param)
