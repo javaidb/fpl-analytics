@@ -25,7 +25,7 @@ import itertools
 #tjM.9QL*q*BX    NEW
 
 # TEAM_IDX = 133754
-#
+
 class FPLDatabase:
     
     TEAM_IDX = 17139
@@ -1302,6 +1302,7 @@ class DataTransformer:
 DataTransformer.init()
 
 class DataPlotter:
+    
     def loop_name_finder(INPUTNAME):
         SEGMENTS = INPUTNAME.split(" ")
         NAME=[]
@@ -1330,11 +1331,76 @@ class DataPlotter:
             if NAME == "":
                 return NAME
         return NAME
-    
-    def plot_multi_stats(param,dataset,values,remove_FPL_15 = True):
+
+    def fetch_team_color(team_id):
+        team_colors = {
+            1: '#DE0202',   # Arsenal
+            2: '#75AADB',   # Aston Villa
+            3: '#DA291C',   # Bournemouth
+            4: '#FDB913',   # Brentford
+            5: '#0057B8',   # Brighton & Hove Albion
+            6: '#034694',   # Chelsea
+            7: '#1B458F',   # Crystal Palace
+            8: '#003399',   # Everton
+            9: '#F5A646',   # Fulham
+            10: '#FFD700',  # Leeds United
+            11: '#0053A0',  # Leicester City
+            12: '#C8102E',  # Liverpool
+            13: '#6CABDD',  # Manchester City
+            14: '#DA291C',  # Manchester United
+            15: '#241F20',  # Newcastle United
+            16: '#BD1E2C',  # Nottingham Forest
+            17: '#D71920',  # Southampton
+            18: '#001C58',  # Tottenham Hotspur
+            19: '#7A263A',  # West Ham United
+            20: '#FDB913'   # Wolverhampton Wanderers
+        }
+        return team_colors[team_id]
+
+    @classmethod
+    def plot_multi_stats(self,param,dataset,values,remove_FPL15 = True):
+        df = DataTransformer.all_df
+        if dataset == 'specialized':
+            pos = values[0]
+            lookback = values[1]
+            num_players = values[2]
+            df = df.loc[df['position'] == pos]
+            if remove_FPL15:
+                df = df.loc[~df['id_player'].isin(MyTeam.df_fpl.id.to_list())]
+            def average_last(lst):
+                return sum(lst[-lookback:]) / lookback
+            df[f"{param}_avg"] = df.apply(lambda x: average_last(x[param]), axis = 1)
+            df_sorted = df.sort_values(by=f"{param}_avg", ascending=False).head(num_players)   
+        data = df_sorted[['id_player','player','round',param,f"{param}_avg"]]
+        data = data.reset_index(drop = True)
+        num_cols = 7
+        num_rows = (len(data) + 2) // num_cols
+        fig = make_subplots(rows=num_rows, cols=num_cols, subplot_titles=data['player'].tolist())
+        for i, d in data.iterrows():
+            row = i // num_cols + 1
+            col = i % num_cols + 1
+            color = self.fetch_team_color(GrabFunctions.grab_player_team_id(d['id_player']))
+            team = GrabFunctions.grab_player_team(d['id_player'])
+            fig.add_trace(go.Scatter(x=d['round'], y=d[param], name = team, mode="markers+lines", line=dict(color=color), marker=dict(color=color)), row=row, col=col)
+            fig.update_xaxes(title_text='GW', row=row, col=col)
+            if param == 'history':
+                fig.add_hrect(y0=-1, y1=4, line_width=0, fillcolor="red", opacity=0.2, row=row, col=col)
+                fig.add_hrect(y0=4, y1=6, line_width=0, fillcolor="yellow", opacity=0.2, row=row, col=col)
+                fig.add_hrect(y0=6, y1=9, line_width=0, fillcolor="green", opacity=0.2, row=row, col=col)
+                fig.add_hrect(y0=9, y1=max(d[param])+2, line_width=0, fillcolor="blue", opacity=0.2, row=row, col=col)
+            else:
+                fig.add_hline(y=d[f"{param}_avg"], line_dash='dot', line_width=2, line_color='black', row=row, col=col)
+            fig.update_xaxes(nticks = 6, row=row, col=col)
+            fig.update_yaxes(nticks = 5, row=row, col=col)
+        fig.update_layout(height=1000, width=330*num_cols)
+        fig.update_layout(title=f'{param} vs GW',showlegend=False)
+        fig.update_xaxes(title='GW')
+        fig.update_yaxes(title=param)
+        fig.show()
         return
     
-    def plot_individual_stats(player_name,paramlist):
+    @classmethod
+    def plot_individual_stats(self,player_name,paramlist):
         return
 
 class DecisionMatrix:
@@ -1509,9 +1575,10 @@ class DecisionMatrix:
                 for fixture in fixtures:
                     team,loc,fdr = fixture[1],fixture[2],fixture[3]
                     rgb_tuple = fdr_color_scheme[fdr]
-                    printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m {team} ({loc}) \x1b[0m '
+                    printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m| {team} ({loc}) \x1b[0m'
             else:
-                printstring += "\x1b[48;2;210;210;210m    -    \x1b[0m "
+                printstring += "\x1b[48;2;210;210;210m|    -    \x1b[0m "
+            printstring += '|>'
         return printstring
     
     @classmethod
@@ -1618,6 +1685,8 @@ class DecisionMatrix:
                                      '-',
                                      self.get_gradient_color(net,min(nets),0,max(nets)),
                                      self.get_colored_fixtures(GrabFunctions.grab_player_team_id(r[0]['id']),5)])
+        
+        tab.align["Upcoming Fixtures"] = "l"
         print(tab)
         
 DecisionMatrix.initialize_players()
