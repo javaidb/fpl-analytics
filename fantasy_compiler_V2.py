@@ -1428,12 +1428,13 @@ class DecisionMatrix:
             bps = df['bps'].iloc[0]
             ICT = df['ict_index'].iloc[0]
             xGI = df['expected_goal_involvements'].iloc[0]
+            minutes = df['minutes'].iloc[0]
             xGC = df['expected_goals_conceded'].iloc[0]
             cost = df['changing_value'].iloc[0][-1]
             if position == 'DEF':
-                self.players.append({'id':num,'position':position,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'xGC':(np.mean(xGC[-6:]),xGC[-6:]), 'cost':cost/10})
+                self.players.append({'id':num,'position':position,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'xGC':(np.mean(xGC[-6:]),xGC[-6:]), 'minutes':minutes[-6:], 'cost':cost/10})
             else:
-                self.players.append({'id':num,'position':position,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'cost':cost/10})
+                self.players.append({'id':num,'position':position,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'minutes':minutes[-6:], 'cost':cost/10})
        
     @classmethod
     def initialize_replacements(self):
@@ -1489,14 +1490,15 @@ class DecisionMatrix:
                 ICT = df['ict_index'].iloc[0]
                 xGI = df['expected_goal_involvements'].iloc[0]
                 xGC = df['expected_goals_conceded'].iloc[0]
+                mins = df['minutes'].iloc[0]
                 cost = df['changing_value'].iloc[0][-1]
                 if key == 'DEF':
         #             print(f'{GrabFunctions.grab_player_name(num)} (${cost/10})')
-                    self.replacement_players.append({'id':num,'position':key,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'xGC':(np.mean(xGC[-6:]),xGC[-6:]), 'cost':cost/10})
+                    self.replacement_players.append({'id':num,'position':key,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'xGC':(np.mean(xGC[-6:]),xGC[-6:]), 'minutes':mins[-6:],'cost':cost/10})
                 else:
                     if np.mean(xGI[-6:]) > 0.4 or np.mean(xGI[-3:]) > 0.5:
         #                 print(f'{GrabFunctions.grab_player_name(num)} {xGI[-6:]} (${cost/10})')
-                        self.replacement_players.append({'id':num,'position':key,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'cost':cost/10})
+                        self.replacement_players.append({'id':num,'position':key,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'minutes':mins[-6:],'cost':cost/10})
         players = [x for x in self.players if x['id'] in MyTeam.df_fpl['id'].to_list()]    
         combinations = [(dict1, dict2) for dict1, dict2 in itertools.product(players, self.replacement_players) if ((dict2['ict'][0]+1 > dict1['ict'][0]) and dict2['position'] == dict1['position'])]
         self.my_dict = {}
@@ -1547,8 +1549,13 @@ class DecisionMatrix:
         background-color ANSI escape code for the cell based on the value's
         position between the minimum and maximum.
         """
-        averaged_val = round(tuple_val[0],2)
-        actual_vals = tuple_val[1]
+        if isinstance(tuple_val, tuple):
+            actual_vals = tuple_val[1]
+            averaged_val = round(tuple_val[0],2)
+            avg_str = str(averaged_val) + ": "
+        elif isinstance(tuple_val, list):
+            actual_vals = tuple_val
+            avg_str = ""
         if param == 'ict':
             low_thr,mid_thr,high_thr = 3.5,5,7.5
         elif param == 'xGI':
@@ -1557,6 +1564,8 @@ class DecisionMatrix:
             low_thr,mid_thr,high_thr = 4,6,9
         elif param == 'bps':
             low_thr,mid_thr,high_thr = 14,21,29
+        elif param == 'minutes':
+            low_thr,mid_thr,high_thr = 45,60,89
         val_str = ""
         for val in actual_vals:
             if val <= low_thr:
@@ -1568,7 +1577,7 @@ class DecisionMatrix:
             else:
                 color_code = '\033[1;34m'  # bold blue
             val_str += color_code + str(round(val,2)) + ' \033[0m'
-        return str(averaged_val) + ": " + val_str
+        return avg_str + val_str
     
     @classmethod
     def get_colored_fixtures(self,team_id, look_ahead):
@@ -1580,21 +1589,31 @@ class DecisionMatrix:
             5:(128, 7, 45)
         }
         fixturelist = GrabFunctions.player_fixtures('fwd',team_id,look_ahead)
+        bgws,dgws = FixtureMath.look_for_blanks_and_dgws()
+        dgws = list(dgws.keys())
         printstring = ''
         for gw in fixturelist:
             fixtures = gw[-1]
     #         printstring += '|'
             if fixtures:
+                xtra = ''
                 if len(fixtures) > 1:
                     spacing = ' '
                 else:
-                    spacing = '     '
+                    if gw[0] in dgws:
+                        spacing = '     '
+                        xtra = ' '
+                    else:
+                        spacing = ' '
                 for fixture in fixtures:
                     team,loc,fdr = fixture[1],fixture[2],fixture[3]
                     rgb_tuple = fdr_color_scheme[fdr]
-                    printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m{spacing}{team} ({loc}){spacing}\x1b[0m'
+                    printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m{spacing}{team} ({loc}){spacing}{xtra}\x1b[0m'
             else:
-                spacing = '        '
+                if gw[0] in dgws:
+                    spacing = '        '
+                else:
+                    spacing = '    '
                 printstring += f"\x1b[48;2;210;210;210m{spacing}-{spacing}\x1b[0m"
             printstring += ' '
         return printstring
@@ -1631,17 +1650,20 @@ class DecisionMatrix:
     @classmethod
     def player_summary(self, dataset: str, values: list = None):
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','xGC','Cost'])
+        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost'])
         if dataset == 'custom':
             players = values
             player_ids = []
-            for plyr_name in players:
-                found_plyr = DataPlotter.loop_name_finder(plyr_name)
-                if not found_plyr:
-                    print(f'Name not found!')
-                    return
-                df = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['web_name_x'] == str(found_plyr)]
-                player_ids.append(df.id_player.values[0])
+            for player in players:
+                if isinstance(player, str):
+                    found_plyr = DataPlotter.loop_name_finder(player)
+                    if not found_plyr:
+                        print(f'Empty entry, skipping player.')
+                        continue
+                    df = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['web_name_x'] == str(found_plyr)]
+                    player_ids.append(df.id_player.values[0])
+                else:
+                    player_ids.append(player)
             players = [x for x in self.players if x['id'] in player_ids]
         elif dataset == 'FPL15':
             players = [x for x in self.players if x['id'] in MyTeam.df_fpl['id'].to_list()]
@@ -1653,14 +1675,18 @@ class DecisionMatrix:
         seq_map = {'GKP':0, 'DEF':1, 'MID':2, 'FWD':3}
         sorted_players = sorted(players, key=lambda x: (seq_map[x['position']], -x['history'][0]))
 #         costs = sorted([x['cost'] for x in sorted_players])
+        prev_position = None
         for plyr_dict in sorted_players:
             cost = plyr_dict['cost']
             name = plyr_dict['name']
-            history = plyr_dict['history'][0]
-            bps = plyr_dict['bps'][0]
-            ict = plyr_dict['ict'][0]
+#             history = plyr_dict['history'][0]
+#             bps = plyr_dict['bps'][0]
+#             ict = plyr_dict['ict'][0]
             position = plyr_dict['position']
             team_id = GrabFunctions.grab_player_team_id(plyr_dict['id'])
+            if prev_position:
+                if prev_position != position:
+                    tab.add_row(['']*11)
             if position == 'DEF':
                 tab.add_row([name,
                              position,
@@ -1670,6 +1696,7 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['bps'],'bps'),
                              self.get_static_color(plyr_dict['ict'],'ict'),
                              self.get_static_color(plyr_dict['xGI'],'xGI'),
+                             self.get_static_color(plyr_dict['minutes'],'minutes'),
                              round(plyr_dict['xGC'][0],2),
                              self.get_gradient_color(cost,3.8,7,13)
 #                              self.get_gradient_color(cost,min(costs),statistics.median(costs),max(costs))
@@ -1683,9 +1710,11 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['bps'],'bps'),
                              self.get_static_color(plyr_dict['ict'],'ict'),
                              self.get_static_color(plyr_dict['xGI'],'xGI'),
+                             self.get_static_color(plyr_dict['minutes'],'minutes'),
                              '-',
                              self.get_gradient_color(cost,3.8,7,13)
                             ])
+            prev_position = position
         print(tab)
         
     @classmethod
@@ -1697,6 +1726,7 @@ class DecisionMatrix:
             nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
         else:
             nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement']]
+        prev_position = None
         for key in self.my_dict:
         #     print(f'Replace {key} with:')
             comp_dict = self.my_dict[key]
@@ -1708,11 +1738,16 @@ class DecisionMatrix:
                 ict = r[0]['ict']
                 team_id = GrabFunctions.grab_player_team_id(r[0]['id'])
                 position = comp_dict['stats']['position']
+#                 print(f'{position} {prev_position}')
+#                 position = r[0]['position']
                 if net_limit:
                     cond = (net <= net_spend_limit)
                 else:
                     cond = True
                 if cond:
+                    if prev_position:
+                        if prev_position != position:
+                            tab.add_row(['']*13)
         #             print(f' - {name}  |  {round(ict,2)}  |  Net Spend: {round(net,2)} $')
                     if position == 'DEF':
                         tab.add_row([key,
@@ -1742,7 +1777,7 @@ class DecisionMatrix:
                                      '-',
                                      self.get_gradient_color(net,min(nets),0,max(nets)),
                                      self.get_colored_fixtures(GrabFunctions.grab_player_team_id(r[0]['id']),5)])
-        
+                    prev_position = position
         tab.align["Upcoming Fixtures"] = "l"
         print(tab)
         
