@@ -1581,13 +1581,18 @@ class DecisionMatrix:
             fixtures = gw[-1]
     #         printstring += '|'
             if fixtures:
+                if len(fixtures) > 1:
+                    spacing = ' '
+                else:
+                    spacing = '     '
                 for fixture in fixtures:
                     team,loc,fdr = fixture[1],fixture[2],fixture[3]
                     rgb_tuple = fdr_color_scheme[fdr]
-                    printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m| {team} ({loc}) \x1b[0m'
+                    printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m{spacing}{team} ({loc}){spacing}\x1b[0m'
             else:
-                printstring += "\x1b[48;2;210;210;210m|    -    \x1b[0m "
-            printstring += '|>'
+                spacing = '        '
+                printstring += f"\x1b[48;2;210;210;210m{spacing}-{spacing}\x1b[0m"
+            printstring += ' '
         return printstring
     
     @classmethod
@@ -1649,7 +1654,7 @@ class DecisionMatrix:
     def replacement_summary(self, net_limit = True):
         #Single replacements
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
+        tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','Team','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
         if net_limit:
             nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
         else:
@@ -1677,6 +1682,7 @@ class DecisionMatrix:
                                      self.get_static_color(comp_dict['stats']['xGI'],'xGI'),
                                      round(comp_dict['stats']['xGC'][0],2),
                                      name,
+                                     GrabFunctions.grab_3ltr_team_name(GrabFunctions.grab_player_team_id(r[0]['id'])),
                                      self.get_static_color(r[0]['ict'],'ict'),
                                      self.get_static_color(r[0]['xGI'],'xGI'),
                                      round(r[0]['xGC'][0],2),
@@ -1689,6 +1695,7 @@ class DecisionMatrix:
                                      self.get_static_color(comp_dict['stats']['xGI'],'xGI'),
                                      '-',
                                      name,
+                                     GrabFunctions.grab_3ltr_team_name(GrabFunctions.grab_player_team_id(r[0]['id'])),
                                      self.get_static_color(r[0]['ict'],'ict'),
                                      self.get_static_color(r[0]['xGI'],'xGI'),
                                      '-',
