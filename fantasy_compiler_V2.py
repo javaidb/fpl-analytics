@@ -388,7 +388,7 @@ class GrabFunctions:
         return teams[team_id]
     
     @classmethod
-    def upcoming_fixtures(self,team_id, look_ahead):    
+    def player_fixtures(self, direction, team_id, look_size):    
         GWS={}
         baseurl = 'https://fantasy.premierleague.com/api/fixtures/'
         req = requests.get(baseurl).json()
@@ -401,12 +401,15 @@ class GrabFunctions:
                 GWS[GW].extend((row['team_a'],row['team_h']))
         for key in GWS:
             GWS[key] = [(GWS[key][i], GWS[key][i+1]) for i in range(0, len(GWS[key]), 2)]
-        GWS = {k: v for k, v in GWS.items() if (k > FPLDatabase.LATEST_GW and k <= FPLDatabase.LATEST_GW + look_ahead)}
-        upcoming_fixtures = []
+        if direction == 'fwd':
+            GWS = {k: v for k, v in GWS.items() if (k > FPLDatabase.LATEST_GW and k <= FPLDatabase.LATEST_GW + look_size)}
+        elif direction == 'rev':
+            GWS = {k: v for k, v in GWS.items() if (k >= FPLDatabase.LATEST_GW - look_size and k <= FPLDatabase.LATEST_GW)}
+        fixtures = []
         for key in GWS:
             fixture = [(t[0],GrabFunctions.grab_3ltr_team_name(t[0]),'H',GrabFunctions.team_rank(t[0])) if t[1] == team_id else (t[1],GrabFunctions.grab_3ltr_team_name(t[1]),'A',GrabFunctions.team_rank(t[1])) for t in GWS[key] if team_id in (t[0], t[1])]
-            upcoming_fixtures.append((key,fixture))
-        return upcoming_fixtures
+            fixtures.append((key,fixture))
+        return fixtures
     
     @classmethod
     def init(self):
@@ -1388,6 +1391,7 @@ class DataPlotter:
         for i, d in data.iterrows():
             row = i // num_cols + 1
             col = i % num_cols + 1
+#             print(f"{row} {col}")
             color = self.fetch_team_color(GrabFunctions.grab_player_team_id(d['id_player']))
             team = GrabFunctions.grab_player_team(d['id_player'])
             fig.add_trace(go.Scatter(x=d['round'], y=d[param], name = team, mode="markers+lines", line=dict(color=color), marker=dict(color=color)), row=row, col=col)
@@ -1400,7 +1404,7 @@ class DataPlotter:
             else:
                 fig.add_hline(y=d[f"{param}_avg"], line_dash='dot', line_width=2, line_color='black', row=row, col=col)
             fig.update_xaxes(nticks = 6, row=row, col=col)
-            fig.update_yaxes(nticks = 5, row=row, col=col)
+            fig.update_yaxes(nticks = 6, row=row, col=col)
         fig.update_layout(height=350*(num_rows), width=350*num_cols)
         fig.update_layout(title=f'{param} vs GW',showlegend=False)
         fig.update_xaxes(title='GW')
@@ -1575,7 +1579,7 @@ class DecisionMatrix:
             4:(255, 23, 81),
             5:(128, 7, 45)
         }
-        fixturelist = GrabFunctions.upcoming_fixtures(team_id,look_ahead)
+        fixturelist = GrabFunctions.player_fixtures('fwd',team_id,look_ahead)
         printstring = ''
         for gw in fixturelist:
             fixtures = gw[-1]
@@ -1594,11 +1598,40 @@ class DecisionMatrix:
                 printstring += f"\x1b[48;2;210;210;210m{spacing}-{spacing}\x1b[0m"
             printstring += ' '
         return printstring
-    
+ 
+    @classmethod
+    def get_past_fixtures_colors(self,team_id, look_behind):
+        fdr_color_scheme = {
+            1:(55, 85, 35),
+            2:(1, 252, 122),
+            3:(210, 210, 210),
+            4:(255, 23, 81),
+            5:(128, 7, 45)
+        }
+        fixturelist = GrabFunctions.player_fixtures('rev',team_id,look_behind)
+        printstring = ''
+        count = 0
+        for gw in fixturelist:
+            fixtures = gw[-1]
+    #         printstring += '|'
+            if fixtures:
+                for fixture in fixtures:
+                    if count < look_behind:
+                        count += 1
+                        fdr = fixture[3]
+                        rgb_tuple = fdr_color_scheme[fdr]
+                        printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m  \x1b[0m'
+            else:
+#                 if count < look_behind:
+#                     count += 1
+#                     printstring += f"\x1b[48;2;0;0;0m  \x1b[0m"
+                continue
+        return printstring
+
     @classmethod
     def player_summary(self, dataset: str, values: list = None):
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','History','Bonus Points','ICT','xGI','xGC','Cost'])
+        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','xGC','Cost'])
         if dataset == 'custom':
             players = values
             player_ids = []
@@ -1627,9 +1660,12 @@ class DecisionMatrix:
             bps = plyr_dict['bps'][0]
             ict = plyr_dict['ict'][0]
             position = plyr_dict['position']
+            team_id = GrabFunctions.grab_player_team_id(plyr_dict['id'])
             if position == 'DEF':
                 tab.add_row([name,
                              position,
+                             GrabFunctions.grab_3ltr_team_name(team_id),
+                             self.get_past_fixtures_colors(team_id,6),
                              self.get_static_color(plyr_dict['history'],'history'),
                              self.get_static_color(plyr_dict['bps'],'bps'),
                              self.get_static_color(plyr_dict['ict'],'ict'),
@@ -1641,6 +1677,8 @@ class DecisionMatrix:
             else:
                 tab.add_row([name,
                              position,
+                             GrabFunctions.grab_3ltr_team_name(team_id),
+                             self.get_past_fixtures_colors(team_id,6),
                              self.get_static_color(plyr_dict['history'],'history'),
                              self.get_static_color(plyr_dict['bps'],'bps'),
                              self.get_static_color(plyr_dict['ict'],'ict'),
@@ -1654,7 +1692,7 @@ class DecisionMatrix:
     def replacement_summary(self, net_limit = True):
         #Single replacements
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','Team','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
+        tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','Team','Past FDRs','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
         if net_limit:
             nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
         else:
@@ -1668,6 +1706,7 @@ class DecisionMatrix:
                 net = r[-1]
                 name = r[0]['name']
                 ict = r[0]['ict']
+                team_id = GrabFunctions.grab_player_team_id(r[0]['id'])
                 position = comp_dict['stats']['position']
                 if net_limit:
                     cond = (net <= net_spend_limit)
@@ -1682,7 +1721,8 @@ class DecisionMatrix:
                                      self.get_static_color(comp_dict['stats']['xGI'],'xGI'),
                                      round(comp_dict['stats']['xGC'][0],2),
                                      name,
-                                     GrabFunctions.grab_3ltr_team_name(GrabFunctions.grab_player_team_id(r[0]['id'])),
+                                     GrabFunctions.grab_3ltr_team_name(team_id),
+                                     self.get_past_fixtures_colors(team_id,6),
                                      self.get_static_color(r[0]['ict'],'ict'),
                                      self.get_static_color(r[0]['xGI'],'xGI'),
                                      round(r[0]['xGC'][0],2),
@@ -1695,7 +1735,8 @@ class DecisionMatrix:
                                      self.get_static_color(comp_dict['stats']['xGI'],'xGI'),
                                      '-',
                                      name,
-                                     GrabFunctions.grab_3ltr_team_name(GrabFunctions.grab_player_team_id(r[0]['id'])),
+                                     GrabFunctions.grab_3ltr_team_name(team_id),
+                                     self.get_past_fixtures_colors(team_id,6),
                                      self.get_static_color(r[0]['ict'],'ict'),
                                      self.get_static_color(r[0]['xGI'],'xGI'),
                                      '-',
