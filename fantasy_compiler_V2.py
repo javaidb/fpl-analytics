@@ -1726,35 +1726,52 @@ class DecisionMatrix:
             nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
         else:
             nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement']]
-        prev_position = None
+#         prev_position,prev_FPL15_player_name = None, None
         for key in self.my_dict:
+            FPL15_player_name = key
         #     print(f'Replace {key} with:')
             comp_dict = self.my_dict[key]
             replacements = comp_dict['replacement']
             sorted_replacements = sorted(replacements, key=lambda x: x[0]['history'][0], reverse=True)
+            count = 0
             for r in sorted_replacements:
-                net = r[-1]
-                name = r[0]['name']
-                ict = r[0]['ict']
-                team_id = GrabFunctions.grab_player_team_id(r[0]['id'])
+                #FP15 Player
                 position = comp_dict['stats']['position']
 #                 print(f'{position} {prev_position}')
 #                 position = r[0]['position']
+                #Replacements
+                name = r[0]['name']
+                team_id = GrabFunctions.grab_player_team_id(r[0]['id'])
+                ict = r[0]['ict']
+                net = r[-1]
                 if net_limit:
                     cond = (net <= net_spend_limit)
                 else:
                     cond = True
                 if cond:
-                    if prev_position:
-                        if prev_position != position:
-                            tab.add_row(['']*13)
+#                     print(position)
+                    if count == 0:
+                        tab.add_row(['']*13)
+                        FPL15_ICT = self.get_static_color(comp_dict['stats']['ict'],'ict')
+                        FPL15_xGI = self.get_static_color(comp_dict['stats']['xGI'],'xGI')
+                        if position == 'DEF':
+                            FPL15_xGC = round(comp_dict['stats']['xGC'][0],2)
+                        FPL15_pos = position
+                    else:
+#                         if prev_FPL15_player_name == FPL15_player_name:
+                        FPL15_player_name, FPL15_pos, FPL15_ICT, FPL15_xGI, FPL15_xGC = '','','','',''
+#                     if prev_position:
+#                         if prev_position != position:
+# #                             print(f'{prev_position} {position}')
+#                             tab.add_row(['']*13)
         #             print(f' - {name}  |  {round(ict,2)}  |  Net Spend: {round(net,2)} $')
+                    count += 1
                     if position == 'DEF':
-                        tab.add_row([key,
-                                     position,
-                                     self.get_static_color(comp_dict['stats']['ict'],'ict'),
-                                     self.get_static_color(comp_dict['stats']['xGI'],'xGI'),
-                                     round(comp_dict['stats']['xGC'][0],2),
+                        tab.add_row([FPL15_player_name,
+                                     FPL15_pos,
+                                     FPL15_ICT,
+                                     FPL15_xGI,
+                                     FPL15_xGC,
                                      name,
                                      GrabFunctions.grab_3ltr_team_name(team_id),
                                      self.get_past_fixtures_colors(team_id,6),
@@ -1764,10 +1781,10 @@ class DecisionMatrix:
                                      self.get_gradient_color(net,min(nets),0,max(nets)),
                                      self.get_colored_fixtures(GrabFunctions.grab_player_team_id(r[0]['id']),5)])
                     else:
-                        tab.add_row([key,
-                                     position,
-                                     self.get_static_color(comp_dict['stats']['ict'],'ict'),
-                                     self.get_static_color(comp_dict['stats']['xGI'],'xGI'),
+                        tab.add_row([FPL15_player_name,
+                                     FPL15_pos,
+                                     FPL15_ICT,
+                                     FPL15_xGI,
                                      '-',
                                      name,
                                      GrabFunctions.grab_3ltr_team_name(team_id),
@@ -1777,7 +1794,8 @@ class DecisionMatrix:
                                      '-',
                                      self.get_gradient_color(net,min(nets),0,max(nets)),
                                      self.get_colored_fixtures(GrabFunctions.grab_player_team_id(r[0]['id']),5)])
-                    prev_position = position
+#                     if FPL15_player_name and position:
+#                         prev_position,prev_FPL15_player_name = position,FPL15_player_name
         tab.align["Upcoming Fixtures"] = "l"
         print(tab)
         
