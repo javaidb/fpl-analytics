@@ -1448,6 +1448,7 @@ class DecisionMatrix:
                 FPL_15_players = MyTeam.df_fpl.id.tolist()
                 mask = df.id_player.isin(FPL_15_players)
                 df = df[~mask]
+                pristine_df = df.copy()
                 def last_3_values(lst):
                     return np.mean(lst[-look_back:])
                 mask = df[param].apply(last_3_values) >= param_thresh
@@ -1460,6 +1461,14 @@ class DecisionMatrix:
                         df = grouped_dict[position]
                         df_sorted = df.sort_values(by=param, key=lambda x: x.map(last_3_values), ascending = False)
                         player_dict[param][look_back][position] = df_sorted.id_player.tolist()
+#                         # Loop through every 2,3,4 values
+#                         if look_back in [2,3,4]:
+#                             print(look_back)
+#                             for i in range(0, len(df[param]), look_back):
+#                                 if i + look_back - 1 < len(df[param]):
+#                                     avg_value = np.mean(df[param][i:i+look_back])
+# #                                     if avg_value >= param_thresh:
+#                                     print(avg_value)
                     except:
                         pass
 
@@ -1650,7 +1659,7 @@ class DecisionMatrix:
     @classmethod
     def player_summary(self, dataset: str, values: list = None):
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost'])
+        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','Upcoming Fixtures'])
         if dataset == 'custom':
             players = values
             player_ids = []
@@ -1686,7 +1695,7 @@ class DecisionMatrix:
             team_id = GrabFunctions.grab_player_team_id(plyr_dict['id'])
             if prev_position:
                 if prev_position != position:
-                    tab.add_row(['']*11)
+                    tab.add_row(['']*12)
             if position == 'DEF':
                 tab.add_row([name,
                              position,
@@ -1698,7 +1707,8 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['xGI'],'xGI'),
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              round(plyr_dict['xGC'][0],2),
-                             self.get_gradient_color(cost,3.8,7,13)
+                             self.get_gradient_color(cost,3.8,7,13),
+                             self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
 #                              self.get_gradient_color(cost,min(costs),statistics.median(costs),max(costs))
                             ])
             else:
@@ -1712,7 +1722,8 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['xGI'],'xGI'),
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              '-',
-                             self.get_gradient_color(cost,3.8,7,13)
+                             self.get_gradient_color(cost,3.8,7,13),
+                             self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
                             ])
             prev_position = position
         print(tab)
