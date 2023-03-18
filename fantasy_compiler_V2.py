@@ -686,6 +686,7 @@ class MyTeam:
         def compile_fpl_team():
             url = FPLDatabase.base_url + 'entry/' + str(FPLDatabase.TEAM_IDX) + '/event/' + str(FPLDatabase.LATEST_GW) + '/picks/'
             r = requests.get(url).json()
+            MyTeam.bank_value = r['entry_history']['bank']/10
             if r['active_chip'] and r['active_chip'] == "freehit":
                 url = FPLDatabase.base_url + 'entry/' + str(FPLDatabase.TEAM_IDX) + '/event/' + str(FPLDatabase.LATEST_GW - 1) + '/picks/'
                 r = requests.get(url).json()
@@ -1521,6 +1522,49 @@ class DecisionMatrix:
         self.my_dict = {k:v for k,v in items}
     
     @classmethod
+    def initialize_effective_ownership(self):    
+        RIVALS_INIT = [829431,#Just Quiet
+                       478233,#GreatestShow
+                       'genius']
+        counter_dict = {}
+        def dict_counter(dictx, listx, rivalx):
+            for idx in listx:
+                if idx not in dictx[rivalx]['players'].keys():
+                    dictx[rivalx]['players'][idx] = 1
+                else:
+                    dictx[rivalx]['players'][idx] += 1
+            return
+        for RIVAL_LEAGUE in RIVALS_INIT:
+            if RIVAL_LEAGUE != 'genius':
+                base_url = 'https://fantasy.premierleague.com/api/' + 'leagues-classic/' + str(RIVAL_LEAGUE) + '/standings/'
+                league_r = requests.get(base_url).json()
+                league_players = league_r['standings']['results']
+                my_rank,my_points = [(x['rank'],x['total']) for x in league_players if x['player_name'] == 'Javaid Baksh'][0]
+                players_of_interest = [x['entry'] for x in league_players if ((x['rank'] < my_rank) or (x['total'] > my_points - 50 and x['rank'] > my_rank))]
+            else:
+                players_of_interest = FPLDatabase.GENIUS_IDS
+#             print(players_of_interest)
+            counter_dict[RIVAL_LEAGUE] = {'rivals':len(players_of_interest),'players':{}}
+            for RIVAL_ID in players_of_interest:
+                url = 'https://fantasy.premierleague.com/api/' + 'entry/' + str(RIVAL_ID) + '/event/' + str(FPLDatabase.LATEST_GW) + '/picks/'
+                r = requests.get(url).json()
+                player_ids = [x['element'] for x in r['picks']]
+                dict_counter(counter_dict, player_ids, RIVAL_LEAGUE)
+            counter_dict[RIVAL_LEAGUE]['players'] = dict(sorted(counter_dict[RIVAL_LEAGUE]['players'].items(), key=lambda item: item[1], reverse=True))
+        self.eff_own_dict = counter_dict
+    
+    @classmethod
+    def get_ownership(self,player_id,league_id):
+        ids = self.eff_own_dict[league_id]
+        total_rivals = ids['rivals']
+        total_players = ids['players']
+        if player_id not in total_players.keys():
+            count = 0
+        else:
+            count = total_players[player_id]
+        return str(count) + "/" + str(total_rivals)
+    
+    @classmethod
     def lerp_color(self,color1, color2, weight):
         """Interpolate between two colors with a given weight."""
         r = (1 - weight) * color1[0] + weight * color2[0]
@@ -1659,7 +1703,7 @@ class DecisionMatrix:
     @classmethod
     def player_summary(self, dataset: str, values: list = None):
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','Upcoming Fixtures'])
+        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','R1','R2','G1','Upcoming Fixtures'])
         if dataset == 'custom':
             players = values
             player_ids = []
@@ -1695,7 +1739,7 @@ class DecisionMatrix:
             team_id = GrabFunctions.grab_player_team_id(plyr_dict['id'])
             if prev_position:
                 if prev_position != position:
-                    tab.add_row(['']*12)
+                    tab.add_row(['']*15)
             if position == 'DEF':
                 tab.add_row([name,
                              position,
@@ -1708,6 +1752,9 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              round(plyr_dict['xGC'][0],2),
                              self.get_gradient_color(cost,3.8,7,13),
+                             self.get_ownership(plyr_dict['id'],league_id=829431),
+                             self.get_ownership(plyr_dict['id'],league_id=478233),
+                             self.get_ownership(plyr_dict['id'],league_id='genius'),
                              self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
 #                              self.get_gradient_color(cost,min(costs),statistics.median(costs),max(costs))
                             ])
@@ -1723,6 +1770,9 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              '-',
                              self.get_gradient_color(cost,3.8,7,13),
+                             self.get_ownership(plyr_dict['id'],league_id=829431),
+                             self.get_ownership(plyr_dict['id'],league_id=478233),
+                             self.get_ownership(plyr_dict['id'],league_id='genius'),
                              self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
                             ])
             prev_position = position
@@ -1812,6 +1862,7 @@ class DecisionMatrix:
         
 DecisionMatrix.initialize_players()
 DecisionMatrix.initialize_replacements()
+DecisionMatrix.initialize_effective_ownership()
         
 # if __name__ == '__main__':
 #     print('\nCompiling FPL team...')
