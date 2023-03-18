@@ -996,9 +996,11 @@ class Rivalry:
                 value = ID_COUNT[i]
                 ID_DICT[pos].append((i,value))
             outlist = sorted(ID_DICT.items(), key=lambda x:x[1], reverse=True)
+            self.genius_eff_own_dict = {}
             for line in outlist:
                 print(f'\n-------------{line[0]}------------')
                 for tup in line[1]:
+                    self.genius_eff_own_dict[tup[0]] = tup[1]
                     name = GrabFunctions.grab_player_name(tup[0])
                     print(f'{name}: {tup[1]}')
             return
@@ -1703,7 +1705,7 @@ class DecisionMatrix:
     @classmethod
     def player_summary(self, dataset: str, values: list = None):
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','R1','R2','G1','Upcoming Fixtures'])
+        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆','Upcoming Fixtures'])
         if dataset == 'custom':
             players = values
             player_ids = []
