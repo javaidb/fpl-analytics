@@ -388,7 +388,9 @@ class GrabFunctions:
         return teams[team_id]
     
     @classmethod
-    def player_fixtures(self, direction, team_id, look_size):    
+    def player_fixtures(self, direction, team_id, look_size, reference_gw=None):
+        if not reference_gw:
+            reference_gw = FPLDatabase.LATEST_GW
         GWS={}
         baseurl = 'https://fantasy.premierleague.com/api/fixtures/'
         req = requests.get(baseurl).json()
@@ -402,9 +404,9 @@ class GrabFunctions:
         for key in GWS:
             GWS[key] = [(GWS[key][i], GWS[key][i+1]) for i in range(0, len(GWS[key]), 2)]
         if direction == 'fwd':
-            GWS = {k: v for k, v in GWS.items() if (k > FPLDatabase.LATEST_GW and k <= FPLDatabase.LATEST_GW + look_size)}
+            GWS = {k: v for k, v in GWS.items() if (k > reference_gw and k <= reference_gw + look_size)}
         elif direction == 'rev':
-            GWS = {k: v for k, v in GWS.items() if (k >= FPLDatabase.LATEST_GW - look_size and k <= FPLDatabase.LATEST_GW)}
+            GWS = {k: v for k, v in GWS.items() if (k >= reference_gw - look_size and k <= reference_gw)}
         fixtures = []
         for key in GWS:
             fixture = [(t[0],GrabFunctions.grab_3ltr_team_name(t[0]),'H',GrabFunctions.team_rank(t[0])) if t[1] == team_id else (t[1],GrabFunctions.grab_3ltr_team_name(t[1]),'A',GrabFunctions.team_rank(t[1])) for t in GWS[key] if team_id in (t[0], t[1])]
@@ -1635,7 +1637,7 @@ class DecisionMatrix:
         return avg_str + val_str
     
     @classmethod
-    def get_colored_fixtures(self,team_id, look_ahead):
+    def get_colored_fixtures(self,team_id, look_ahead, reference_gw):
         fdr_color_scheme = {
             1:(55, 85, 35),
             2:(1, 252, 122),
@@ -1643,7 +1645,7 @@ class DecisionMatrix:
             4:(255, 23, 81),
             5:(128, 7, 45)
         }
-        fixturelist = GrabFunctions.player_fixtures('fwd',team_id,look_ahead)
+        fixturelist = GrabFunctions.player_fixtures('fwd',team_id,look_ahead, reference_gw)
         bgws,dgws = FixtureMath.look_for_blanks_and_dgws()
         dgws = list(dgws.keys())
         printstring = ''
