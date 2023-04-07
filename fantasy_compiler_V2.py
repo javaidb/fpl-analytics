@@ -1582,7 +1582,7 @@ class DecisionMatrix:
         self.eff_own_dict = counter_dict
     
     @classmethod
-    def get_ownership(self,player_id,league_id):
+    def get_ownership(self,player_id,league_id,format_color):
         ids = self.eff_own_dict[league_id]
         total_rivals = ids['rivals']
         total_players = ids['players']
@@ -1590,7 +1590,13 @@ class DecisionMatrix:
             count = 0
         else:
             count = total_players[player_id]
-        return str(count) + "/" + str(total_rivals)
+        if count == 0 and format_color == 'sell':
+            count_str = "\033[31m" +  str(count) + "\033[0m"
+        elif count != 0 and format_color == 'buy':
+            count_str = "\033[32m" +  str(count) + "\033[0m"
+        else:
+            count_str = str(count)
+        return count_str + "/" + str(total_rivals)
     
     @classmethod
     def lerp_color(self,color1, color2, weight):
@@ -1745,8 +1751,10 @@ class DecisionMatrix:
                 else:
                     player_ids.append(player)
             players = [x for x in self.players if x['id'] in player_ids]
+            format_color = 'buy'
         elif dataset == 'FPL15':
             players = [x for x in self.players if x['id'] in MyTeam.df_fpl['id'].to_list()]
+            format_color = 'sell'
         else:
             print("'dataset' variable must be one of 'FPL15' or 'custom'")
             return
@@ -1783,12 +1791,12 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              round(plyr_dict['xGC'][0],2),
                              self.get_gradient_color(cost,3.8,7,13),
-                             self.get_ownership(plyr_dict['id'],league_id=829431),
-                             self.get_ownership(plyr_dict['id'],league_id=478233),
-                             self.get_ownership(plyr_dict['id'],league_id='gen_1k'),
-                             self.get_ownership(plyr_dict['id'],league_id='gen_10k'),
-                             self.get_ownership(plyr_dict['id'],league_id='gen_100k'),
-                             self.get_ownership(plyr_dict['id'],league_id='genius'),
+                             self.get_ownership(plyr_dict['id'],league_id=829431,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id=478233,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_1k',format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_10k',format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_100k',format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='genius',format_color=format_color),
                              self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
 #                              self.get_gradient_color(cost,min(costs),statistics.median(costs),max(costs))
                             ])
@@ -1804,12 +1812,12 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              '-',
                              self.get_gradient_color(cost,3.8,7,13),
-                             self.get_ownership(plyr_dict['id'],league_id=829431),
-                             self.get_ownership(plyr_dict['id'],league_id=478233),
-                             self.get_ownership(plyr_dict['id'],league_id='gen_1k'),
-                             self.get_ownership(plyr_dict['id'],league_id='gen_10k'),
-                             self.get_ownership(plyr_dict['id'],league_id='gen_100k'),
-                             self.get_ownership(plyr_dict['id'],league_id='genius'),
+                             self.get_ownership(plyr_dict['id'],league_id=829431,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id=478233,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_1k',format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_10k',format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_100k',format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id='genius',format_color=format_color),
                              self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
                             ])
             prev_position = position
