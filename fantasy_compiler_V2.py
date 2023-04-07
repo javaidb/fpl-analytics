@@ -1593,7 +1593,7 @@ class DecisionMatrix:
         if count == 0 and format_color == 'sell':
             count_str = "\033[31m" +  str(count) + "\033[0m"
         elif count != 0 and format_color == 'buy':
-            count_str = "\033[32m" +  str(count) + "\033[0m"
+            count_str = "\033[34m" +  str(count) + "\033[0m"
         else:
             count_str = str(count)
         return count_str + "/" + str(total_rivals)
