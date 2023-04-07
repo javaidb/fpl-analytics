@@ -45,7 +45,8 @@ class FPLDatabase:
         1955,#Ben Crellin (?????)
         33036,#Matt Corbidge (Yeezy Taught Me)
         3596,#Dan Bennett (Bend it like Bennett)
-        1#Daniel Barfield
+        1,#Daniel Barfield
+        7000#FPL_Harry (Harry Daniels)
         ]
 
     #############################################################
@@ -853,12 +854,14 @@ class Rivalry:
             for team_id in dictionary[most_recent_gw].keys():
                 name = dictionary[most_recent_gw][team_id]['name']
                 t2 = dictionary[most_recent_gw][team_id]['team']
-                t1 = dictionary[prev_gw][team_id]['team']
-                pre_diff = list(set(t1) - set(t2))
-                post_diff = list(set(t2) - set(t1))
-                change_dict[team_id] = {'name':name,
-                                        'out':pre_diff,
-                                        'in':post_diff}
+                try:
+                    t1 = dictionary[prev_gw][team_id]['team']
+                    pre_diff = list(set(t1) - set(t2))
+                    post_diff = list(set(t2) - set(t1))
+                    change_dict[team_id] = {'name':name,
+                                            'out':pre_diff,
+                                            'in':post_diff}
+                except: pass
             file.close()
             chng = 0
             # print(change_dict)
@@ -917,21 +920,23 @@ class Rivalry:
                 for team_id in dictionary[recorded_gws[gw_identifier]].keys():
                     name = dictionary[recorded_gws[gw_identifier]][team_id]['name']
                     t2 = dictionary[recorded_gws[gw_identifier]][team_id]['team']
-                    t1 = dictionary[recorded_gws[gw_identifier-1]][team_id]['team']
-                    pre_diff = list(set(t1) - set(t2))
-                    post_diff = list(set(t2) - set(t1))
-                    if team_id not in change_dict.keys():
-                        change_dict[team_id] = {'name':name,
-                                                'out':[],
-                                                'in':[]}
-                    change_dict[team_id]['out'] = change_dict[team_id]['out'] + pre_diff
-                    comp1 = [x for x in change_dict[team_id]['out'] if x in change_dict[team_id]['in']]
-                    change_dict[team_id]['in'] = change_dict[team_id]['in'] + post_diff
-                    comp2 = [x for x in change_dict[team_id]['in'] if x in change_dict[team_id]['out']]
-                    if comp1:
-                        change_dict[team_id]['in'] = [x for x in change_dict[team_id]['in'] if x not in comp1]
-                    if comp2:
-                        change_dict[team_id]['out'] = [x for x in change_dict[team_id]['out'] if x not in comp2]
+                    try:
+                        t1 = dictionary[recorded_gws[gw_identifier-1]][team_id]['team']
+                        pre_diff = list(set(t1) - set(t2))
+                        post_diff = list(set(t2) - set(t1))
+                        if team_id not in change_dict.keys():
+                            change_dict[team_id] = {'name':name,
+                                                    'out':[],
+                                                    'in':[]}
+                        change_dict[team_id]['out'] = change_dict[team_id]['out'] + pre_diff
+                        comp1 = [x for x in change_dict[team_id]['out'] if x in change_dict[team_id]['in']]
+                        change_dict[team_id]['in'] = change_dict[team_id]['in'] + post_diff
+                        comp2 = [x for x in change_dict[team_id]['in'] if x in change_dict[team_id]['out']]
+                        if comp1:
+                            change_dict[team_id]['in'] = [x for x in change_dict[team_id]['in'] if x not in comp1]
+                        if comp2:
+                            change_dict[team_id]['out'] = [x for x in change_dict[team_id]['out'] if x not in comp2]
+                    except: pass
                     # print(change_dict)
             tally_dict = {'OUT':{},
                           'IN':{}}
@@ -1531,6 +1536,23 @@ class DecisionMatrix:
                        478233,#GreatestShow
                        'genius']
         counter_dict = {}
+        #Find IDs with ranks
+        def rank_finder(ID):
+            r = requests.get(
+                            'https://fantasy.premierleague.com/api/entry/' + str(ID) + '/event/' + str(FPLDatabase.LATEST_GW) + '/picks/'
+                    ).json()
+            return r['entry_history']['overall_rank']
+        top_1k = [idx for idx in FPLDatabase.GENIUS_IDS if rank_finder(idx) <= 1000]
+        top_10k = [idx for idx in FPLDatabase.GENIUS_IDS if rank_finder(idx) <= 10000]
+        top_100k = [idx for idx in FPLDatabase.GENIUS_IDS if rank_finder(idx) <= 100000]
+        rank_dict={}
+        for topper,namer in [(top_1k,'gen_1k'), (top_10k,'gen_10k'), (top_100k,'gen_100k')]:
+            if topper:
+#                 if (namer == 'gen_10k' and len(top_10k) == len(top_1k)) or (namer == 'gen_100k' and len(top_100k) == len(top_10k)):
+#                     continue
+#                 else:
+                RIVALS_INIT.append(namer)
+                rank_dict[namer] = topper
         def dict_counter(dictx, listx, rivalx):
             for idx in listx:
                 if idx not in dictx[rivalx]['players'].keys():
@@ -1539,15 +1561,17 @@ class DecisionMatrix:
                     dictx[rivalx]['players'][idx] += 1
             return
         for RIVAL_LEAGUE in RIVALS_INIT:
-            if RIVAL_LEAGUE != 'genius':
+            if 'gen' not in str(RIVAL_LEAGUE):
                 base_url = 'https://fantasy.premierleague.com/api/' + 'leagues-classic/' + str(RIVAL_LEAGUE) + '/standings/'
                 league_r = requests.get(base_url).json()
                 league_players = league_r['standings']['results']
                 my_rank,my_points = [(x['rank'],x['total']) for x in league_players if x['player_name'] == 'Javaid Baksh'][0]
                 players_of_interest = [x['entry'] for x in league_players if ((x['rank'] < my_rank) or (x['total'] > my_points - 50 and x['rank'] > my_rank))]
-            else:
+            elif RIVAL_LEAGUE == 'genius':
                 players_of_interest = FPLDatabase.GENIUS_IDS
 #             print(players_of_interest)
+            elif 'gen_' in RIVAL_LEAGUE:
+                players_of_interest = rank_dict[RIVAL_LEAGUE]
             counter_dict[RIVAL_LEAGUE] = {'rivals':len(players_of_interest),'players':{}}
             for RIVAL_ID in players_of_interest:
                 url = 'https://fantasy.premierleague.com/api/' + 'entry/' + str(RIVAL_ID) + '/event/' + str(FPLDatabase.LATEST_GW) + '/picks/'
@@ -1637,7 +1661,7 @@ class DecisionMatrix:
         return avg_str + val_str
     
     @classmethod
-    def get_colored_fixtures(self,team_id, look_ahead, reference_gw):
+    def get_colored_fixtures(self,team_id, look_ahead, reference_gw=None):
         fdr_color_scheme = {
             1:(55, 85, 35),
             2:(1, 252, 122),
@@ -1707,7 +1731,6 @@ class DecisionMatrix:
     @classmethod
     def player_summary(self, dataset: str, values: list = None):
         net_spend_limit = round(MyTeam.bank_value,2)
-        tab = PrettyTable(['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆','Upcoming Fixtures'])
         if dataset == 'custom':
             players = values
             player_ids = []
@@ -1733,6 +1756,10 @@ class DecisionMatrix:
         sorted_players = sorted(players, key=lambda x: (seq_map[x['position']], -x['history'][0]))
 #         costs = sorted([x['cost'] for x in sorted_players])
         prev_position = None
+    
+        table_cols = ['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆₁ₖ','☆₁₀ₖ','☆₁₀₀ₖ','☆','Upcoming Fixtures']
+#         gen_cols = [x for x in DecisionMatrix.eff_own_dict.keys() if 'gen_' in str(x)]
+        tab = PrettyTable(table_cols)
         for plyr_dict in sorted_players:
             cost = plyr_dict['cost']
             name = plyr_dict['name']
@@ -1743,7 +1770,7 @@ class DecisionMatrix:
             team_id = GrabFunctions.grab_player_team_id(plyr_dict['id'])
             if prev_position:
                 if prev_position != position:
-                    tab.add_row(['']*15)
+                    tab.add_row(['']*len(table_cols))
             if position == 'DEF':
                 tab.add_row([name,
                              position,
@@ -1758,6 +1785,9 @@ class DecisionMatrix:
                              self.get_gradient_color(cost,3.8,7,13),
                              self.get_ownership(plyr_dict['id'],league_id=829431),
                              self.get_ownership(plyr_dict['id'],league_id=478233),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_1k'),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_10k'),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_100k'),
                              self.get_ownership(plyr_dict['id'],league_id='genius'),
                              self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
 #                              self.get_gradient_color(cost,min(costs),statistics.median(costs),max(costs))
@@ -1776,6 +1806,9 @@ class DecisionMatrix:
                              self.get_gradient_color(cost,3.8,7,13),
                              self.get_ownership(plyr_dict['id'],league_id=829431),
                              self.get_ownership(plyr_dict['id'],league_id=478233),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_1k'),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_10k'),
+                             self.get_ownership(plyr_dict['id'],league_id='gen_100k'),
                              self.get_ownership(plyr_dict['id'],league_id='genius'),
                              self.get_colored_fixtures(GrabFunctions.grab_player_team_id(plyr_dict['id']),5)
                             ])
