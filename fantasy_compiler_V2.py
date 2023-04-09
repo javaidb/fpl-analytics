@@ -1669,12 +1669,13 @@ class DecisionMatrix:
     @classmethod
     def get_colored_fixtures(self,team_id, look_ahead, reference_gw=None):
         fdr_color_scheme = {
-            1:(55, 85, 35),
-            2:(1, 252, 122),
-            3:(210, 210, 210),
-            4:(255, 23, 81),
-            5:(128, 7, 45)
+            1: (104, 134, 79),
+            2: (105, 252, 163),
+            3: (210, 210, 210),
+            4: (255, 106, 137),
+            5: (160, 49, 84)
         }
+
         fixturelist = GrabFunctions.player_fixtures('fwd',team_id,look_ahead, reference_gw)
         bgws,dgws = FixtureMath.look_for_blanks_and_dgws()
         dgws = list(dgws.keys())
@@ -1706,14 +1707,52 @@ class DecisionMatrix:
         return printstring
  
     @classmethod
+    def get_colored_teams(self,team_3ltr):
+        team_colors = {
+            'ARS': {'bg': (206, 78, 95), 'text': (255, 255, 255)},
+            'AVL': {'bg': (133, 60, 83), 'text': (207, 200, 99)},
+            'BOU': {'bg': (206, 75, 75), 'text': (0, 0, 0)},
+            'BRE': {'bg': (255, 178, 180), 'text': (0, 0, 0)},
+            'BHA': {'bg': (48, 76, 143), 'text': (255, 255, 255)},
+            'CHE': {'bg': (59, 89, 152), 'text': (255, 255, 255)},
+            'CRY': {'bg': (155, 57, 98), 'text': (255, 255, 255)},
+            'EVE': {'bg': (43, 76, 116), 'text': (255, 255, 255)},
+            'FUL': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
+            'LEI': {'bg': (51, 93, 158), 'text': (255, 255, 255)},
+            'LEE': {'bg': (232, 232, 232), 'text': (0, 0, 0)},
+            'LIV': {'bg': (193, 53, 81), 'text': (255, 255, 255)},
+            'MCI': {'bg': (149, 200, 210), 'text': (0, 0, 0)},
+            'MUN': {'bg': (195, 68, 75), 'text': (255, 255, 255)},
+            'NEW': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
+            'NFO': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
+            'SOU': {'bg': (198, 87, 103), 'text': (255, 255, 255)},
+            'TOT': {'bg': (64, 92, 138), 'text': (255, 255, 255)},
+            'WHU': {'bg': (146, 72, 72), 'text': (255, 255, 255)},
+            'WOL': {'bg': (246, 205, 96), 'text': (0, 0, 0)}
+        }
+
+
+        if team_3ltr in team_colors:
+            bg_rgb_tuple = team_colors[team_3ltr]['bg']
+            text_rgb_tuple = team_colors[team_3ltr]['text']
+            colored_text = f'\x1b[38;2;{text_rgb_tuple[0]};{text_rgb_tuple[1]};{text_rgb_tuple[2]}m'
+            colored_bg = f'\x1b[48;2;{bg_rgb_tuple[0]};{bg_rgb_tuple[1]};{bg_rgb_tuple[2]}m'
+            reset_color = '\x1b[0m'
+            formatted_string = f'{colored_bg}{colored_text} {team_3ltr} {reset_color}'
+        else:
+            formatted_string = team_3ltr
+        return formatted_string
+
+    @classmethod
     def get_past_fixtures_colors(self,team_id, look_behind):
         fdr_color_scheme = {
-            1:(55, 85, 35),
-            2:(1, 252, 122),
-            3:(210, 210, 210),
-            4:(255, 23, 81),
-            5:(128, 7, 45)
+            1: (79, 121, 66),
+            2: (51, 230, 153),
+            3: (210, 210, 210),
+            4: (255, 64, 107),
+            5: (150, 27, 67)
         }
+
         fixturelist = GrabFunctions.player_fixtures('rev',team_id,look_behind)
         printstring = ''
         count = 0
@@ -1782,7 +1821,7 @@ class DecisionMatrix:
             if position == 'DEF':
                 tab.add_row([name,
                              position,
-                             GrabFunctions.grab_3ltr_team_name(team_id),
+                             self.get_colored_teams(GrabFunctions.grab_3ltr_team_name(team_id)),
                              self.get_past_fixtures_colors(team_id,6),
                              self.get_static_color(plyr_dict['history'],'history'),
                              self.get_static_color(plyr_dict['bps'],'bps'),
@@ -1803,7 +1842,7 @@ class DecisionMatrix:
             else:
                 tab.add_row([name,
                              position,
-                             GrabFunctions.grab_3ltr_team_name(team_id),
+                             self.get_colored_teams(GrabFunctions.grab_3ltr_team_name(team_id)),
                              self.get_past_fixtures_colors(team_id,6),
                              self.get_static_color(plyr_dict['history'],'history'),
                              self.get_static_color(plyr_dict['bps'],'bps'),
@@ -1879,7 +1918,7 @@ class DecisionMatrix:
                                      FPL15_xGI,
                                      FPL15_xGC,
                                      name,
-                                     GrabFunctions.grab_3ltr_team_name(team_id),
+                                     self.get_colored_teams(GrabFunctions.grab_3ltr_team_name(team_id)),
                                      self.get_past_fixtures_colors(team_id,6),
                                      self.get_static_color(r[0]['ict'],'ict'),
                                      self.get_static_color(r[0]['xGI'],'xGI'),
@@ -1893,7 +1932,7 @@ class DecisionMatrix:
                                      FPL15_xGI,
                                      '-',
                                      name,
-                                     GrabFunctions.grab_3ltr_team_name(team_id),
+                                     self.get_colored_teams(GrabFunctions.grab_3ltr_team_name(team_id)),
                                      self.get_past_fixtures_colors(team_id,6),
                                      self.get_static_color(r[0]['ict'],'ict'),
                                      self.get_static_color(r[0]['xGI'],'xGI'),
