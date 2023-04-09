@@ -1669,11 +1669,11 @@ class DecisionMatrix:
     @classmethod
     def get_colored_fixtures(self,team_id, look_ahead, reference_gw=None):
         fdr_color_scheme = {
-            1: (104, 134, 79),
-            2: (105, 252, 163),
+            1: (79, 121, 66),
+            2: (51, 230, 153),
             3: (210, 210, 210),
-            4: (255, 106, 137),
-            5: (160, 49, 84)
+            4: (255, 64, 107),
+            5: (150, 27, 67)
         }
 
         fixturelist = GrabFunctions.player_fixtures('fwd',team_id,look_ahead, reference_gw)
