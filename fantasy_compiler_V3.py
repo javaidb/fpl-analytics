@@ -53,7 +53,7 @@ class FPLDatabase:
         ]
     
     r = requests.get(base_url+'bootstrap-static/').json()    # get data from bootstrap-static endpoint
-    pprint(r, indent=2, depth=1, compact=True) # show the top level fields
+    # pprint(r, indent=2, depth=1, compact=True) # show the top level fields
     
     players = pd.json_normalize(r['elements'])
 
@@ -80,7 +80,7 @@ class FPLDatabase:
             player_data = await resp.json()
             player_history = pd.DataFrame(player_data['history'])
             return player_history
-
+    print('\n<Expedited Build> Compiling initial dataframes from FPL API requests...') 
     async def compile_dataframes(self):
         # join team name
         self.players = self.players.merge(
@@ -165,7 +165,7 @@ class FPLDatabase:
             def calculate_last_vals(lookback,dfx):
                 last_val = sum(dfx[-lookback:]) / len(dfx[-lookback:])
                 return last_val
-                
+            print('\n<Expedited Build>: Scanning all players to compile master dataframe...') 
             # Replace the original for loop with a new one
             for num, idx in enumerate(tqdm_notebook(total_summary['id_player'])):
                 try:
@@ -217,7 +217,7 @@ class FPLDatabase:
         asyncio.run(compile_summary())
         self.total_summary = total_summary.copy()
         self.total_summary.rename(columns = {'singular_name_short':'position'}, inplace = True)
-        print(self.total_summary.columns.to_list())
+        # print(self.total_summary.columns.to_list())
         
     def __init__(self):
         self.compile_latest_gw()
@@ -573,8 +573,8 @@ class BestOfTheBest:
         if personal is None:
 #             df = FPLDatabase.total_summary[['id_player', 'player','value','name','position','history','last6_mean_x','last3_mean_x','minutes','bps']].sort_values(by=['last6_mean_x'],ascending=False).loc[FPLDatabase.total_summary['value']<=value]
             df = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['value']<=value]
-            print(df['player'])
-            print(fpl_df['player'])
+            # print(df['player'])
+            # print(fpl_df['player'])
             df = df[~df['player'].isin(fpl_df['player'].tolist())]
         else:
             df = fpl_df
