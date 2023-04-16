@@ -1,7 +1,5 @@
-# -*- coding: utf-8 -*-
 """
 Created on Thu Apr 28 15:09:09 2022
-
 @author: Javaid Baksh
 """
 import requests, json
@@ -1547,12 +1545,12 @@ class DecisionMatrix:
         top_100k = [idx for idx in FPLDatabase.GENIUS_IDS if rank_finder(idx) <= 100000]
         rank_dict={}
         for topper,namer in [(top_1k,'gen_1k'), (top_10k,'gen_10k'), (top_100k,'gen_100k')]:
-            if topper:
+#             if topper:
 #                 if (namer == 'gen_10k' and len(top_10k) == len(top_1k)) or (namer == 'gen_100k' and len(top_100k) == len(top_10k)):
 #                     continue
 #                 else:
-                RIVALS_INIT.append(namer)
-                rank_dict[namer] = topper
+            RIVALS_INIT.append(namer)
+            rank_dict[namer] = topper
         def dict_counter(dictx, listx, rivalx):
             for idx in listx:
                 if idx not in dictx[rivalx]['players'].keys():
