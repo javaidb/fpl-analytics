@@ -1448,6 +1448,18 @@ class DecisionMatrix:
         unique_values['FWD'] = list(set(unique_values['FWD']))
         # print(unique_values)
         self.replacement_players=[]
+        def passes_xGI_threshold(numbers):
+            last_three = numbers[-3:]
+            combinations = [(last_three[0], last_three[1]),
+                            (last_three[0], last_three[2]),
+                            (last_three[1], last_three[2])]
+
+            for a, b in combinations:
+                average = (a + b) / 2
+                if average > 0.5:
+                    return True
+
+            return False
         for key in unique_values.keys():
         #     print(f'\n{key}\n')
             for num in unique_values[key]:
@@ -1463,7 +1475,7 @@ class DecisionMatrix:
         #             print(f'{GrabFunctions.grab_player_name(num)} (${cost/10})')
                     self.replacement_players.append({'id':num,'position':key,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'xGC':(np.mean(xGC[-6:]),xGC[-6:]), 'minutes':mins[-6:],'cost':cost/10})
                 else:
-                    if np.mean(xGI[-6:]) > 0.4 or np.mean(xGI[-3:]) > 0.5:
+                    if np.mean(xGI[-6:]) > 0.4 or passes_xGI_threshold(xGI):
         #                 print(f'{GrabFunctions.grab_player_name(num)} {xGI[-6:]} (${cost/10})')
                         self.replacement_players.append({'id':num,'position':key,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'minutes':mins[-6:],'cost':cost/10})
         players = [x for x in self.players if x['id'] in MyTeam.df_fpl['id'].to_list()]    
@@ -1477,7 +1489,7 @@ class DecisionMatrix:
         seq_map = {'GKP':0, 'DEF':1, 'MID':2, 'FWD':3}
         items = sorted(DecisionMatrix.my_dict.items(), key=lambda x: seq_map[x[1]['stats']['position']])
         self.my_dict = {k:v for k,v in items}
-    
+        
     @classmethod
     def initialize_effective_ownership(self):    
         RIVALS_INIT = [829431,#Just Quiet
