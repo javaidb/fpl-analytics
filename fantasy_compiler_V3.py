@@ -80,7 +80,7 @@ class FPLDatabase:
             player_data = await resp.json()
             player_history = pd.DataFrame(player_data['history'])
             return player_history
-    print('\n<Expedited Build> Compiling initial dataframes from FPL API requests...') 
+    print('\n<Expedited Build>: Compiling initial dataframes from FPL API requests...') 
     async def compile_dataframes(self):
         # join team name
         self.players = self.players.merge(
@@ -1678,14 +1678,14 @@ class DecisionMatrix:
             'CRY': {'bg': (155, 57, 98), 'text': (255, 255, 255)},
             'EVE': {'bg': (43, 76, 116), 'text': (255, 255, 255)},
             'FUL': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
-            'LEI': {'bg': (51, 93, 158), 'text': (255, 255, 255)},
-            'LEE': {'bg': (232, 232, 232), 'text': (0, 0, 0)},
-            'LIV': {'bg': (193, 53, 81), 'text': (255, 255, 255)},
+            'LEI': {'bg': (51, 93, 158), 'text': (246, 205, 96)},
+            'LEE': {'bg': (210, 210, 210), 'text': (0, 0, 0)},
+            'LIV': {'bg': (193, 53, 81), 'text': (100, 210, 156)},
             'MCI': {'bg': (149, 200, 210), 'text': (0, 0, 0)},
-            'MUN': {'bg': (195, 68, 75), 'text': (255, 255, 255)},
+            'MUN': {'bg': (195, 68, 75), 'text': (246, 205, 96)},
             'NEW': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
-            'NFO': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
-            'SOU': {'bg': (198, 87, 103), 'text': (255, 255, 255)},
+            'NFO': {'bg': (195, 68, 75), 'text': (255, 255, 255)},
+            'SOU': {'bg': (220, 220, 220), 'text': (220, 87, 103)},
             'TOT': {'bg': (64, 92, 138), 'text': (255, 255, 255)},
             'WHU': {'bg': (146, 72, 72), 'text': (255, 255, 255)},
             'WOL': {'bg': (246, 205, 96), 'text': (0, 0, 0)}
