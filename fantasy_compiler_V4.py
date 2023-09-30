@@ -25,31 +25,32 @@ import itertools
 
 # TEAM_IDX = 133754
 
-import nest_asyncio
 import asyncio
 import aiohttp
+import nest_asyncio
 nest_asyncio.apply()
 
 class FPLDatabase:
-    TEAM_IDX = 17139
-    RIVALS_INIT = [829431,#Just Quiet
-                   478233#GreatestShow
+    TEAM_IDX = 119615
+    RIVALS_INIT = [
+                   782655,#Just Quiet
+                   467038#GreatestShow
                   ]
     RIVAL_TEAMS_IDS = []
     
     base_url = 'https://fantasy.premierleague.com/api/' # base url for all FPL API endpoints
 
     GENIUS_IDS = [
-        728021,#Fabio Borges(Clichy's Cleansheets)
-        5977880,#Magnus Carlsen(KFUM Tjuvholmen)
-        15709,#Finn Solie(Finncastle)
-        562,#Tom Stephenson(Badgers9)
-        3282,#Mark Mansfield (Schmohawks)
-        1955,#Ben Crellin (?????)
-        33036,#Matt Corbidge (Yeezy Taught Me)
-        3596,#Dan Bennett (Bend it like Bennett)
-        1,#Daniel Barfield
-        7000#FPL_Harry (Harry Daniels)
+        4305040,#Fabio Borges(Clichy's Cleansheets)
+#         5977880,#Magnus Carlsen(KFUM Tjuvholmen)
+#         15709,#Finn Solie(Finncastle)
+        14165,#Tom Stephenson(Badgers9)
+        2905,#Mark Mansfield (Schmohawks)
+        7632,#Ben Crellin (?????)
+        157354,#Matt Corbidge (Yeezy Taught Me)
+        3352,#Dan Bennett (Bend it like Bennett)
+        839,#Daniel Barfield
+        6312#FPL_Harry (Harry Daniels)
 
         ]
     
@@ -238,6 +239,7 @@ class FPLDatabase:
         
     def compile_latest_gw(self):
         gwdata = self.r['events']
+        self.SZN_START_TIME = [x['deadline_time'] for x in gwdata][0]
         for gw in gwdata:
             gameweek = gw['id']
             date = gw['deadline_time']
@@ -339,7 +341,28 @@ class GrabFunctions:
     
     @classmethod
     def grab_3ltr_team_name(self,team_id):
-        teams = {1: 'ARS', 2: 'AVL', 3: 'BOU', 4: 'BRE', 5: 'BHA', 6: 'CHE', 7: 'CRY', 8: 'EVE', 9: 'FUL', 10: 'LEI', 11: 'LEE', 12: 'LIV', 13: 'MCI', 14: 'MUN', 15: 'NEW', 16: 'NFO', 17: 'SOU', 18: 'TOT', 19: 'WHU', 20: 'WOL'}
+        teams = {
+                    1: 'ARS',
+                    2: 'AVL',
+                    3: 'BOU',
+                    4: 'BRE',
+                    5: 'BHA',
+                    6: 'BUR',
+                    7: 'CHE',
+                    8: 'CRY',
+                    9: 'EVE',
+                    10: 'FUL',
+                    11: 'LIV',
+                    12: 'LUT',
+                    13: 'MCI',
+                    14: 'MUN',
+                    15: 'NEW',
+                    16: 'NFO',
+                    17: 'SHE',
+                    18: 'TOT',
+                    19: 'WHU',
+                    20: 'WOL'
+                }
         return teams[team_id]
     
     @classmethod
@@ -376,19 +399,20 @@ class GrabFunctions:
             init_id = 1
             fdr_data = {}
             while init_id < len(FPLDatabase.total_summary):
-                null_team_id = self.grab_player_team_id(init_id)
-                base_url_x = 'https://fantasy.premierleague.com/api/element-summary/'+str(init_id)+'/'
-                elementdat = requests.get(base_url_x).json()
-                try:
-                    fdr_info = [[([i['team_h'],i['team_a']],i['difficulty']) for i in elementdat["fixtures"]][0]]
-                    fdr_simpl = [((set(x[0]) - {null_team_id}).pop(),x[1]) for x in fdr_info]
-                    # print(fdr_simpl)
-                    for pair in fdr_simpl:
-                        if pair[0] not in fdr_data.keys():
-                            # print(pair)
-                            fdr_data[pair[0]] = pair[1]
-                except:
-                    pass
+                if init_id in list(FPLDatabase.total_summary['id_player'].unique()):
+                    null_team_id = self.grab_player_team_id(init_id)
+                    base_url_x = 'https://fantasy.premierleague.com/api/element-summary/'+str(init_id)+'/'
+                    elementdat = requests.get(base_url_x).json()
+                    try:
+                        fdr_info = [[([i['team_h'],i['team_a']],i['difficulty']) for i in elementdat["fixtures"]][0]]
+                        fdr_simpl = [((set(x[0]) - {null_team_id}).pop(),x[1]) for x in fdr_info]
+                        # print(fdr_simpl)
+                        for pair in fdr_simpl:
+                            if pair[0] not in fdr_data.keys():
+                                # print(pair)
+                                fdr_data[pair[0]] = pair[1]
+                    except:
+                        pass
                 init_id += 10
             init_id = 1
             while len(fdr_data) < 20 and init_id < len(FPLDatabase.total_summary):
@@ -555,7 +579,7 @@ class BestOfTheBest:
         df = pd.DataFrame({'id':count_dict.keys(),'count':count_dict.values()})
         df['id'] = df['id'].astype(int)
         df['count'] = df['count'].astype(str)
-#         df['player']='NA';df['value']='NA';df['position']='NA';df['team']='NA';df['starting_risk']='NA';df['form_top6adjusted']='NA';df['history']='NA';df['minutes']='NA';df['fulltime']='NA';df['fullhour']='NA';df['bps']='NA'
+        df['player']='NA';df['value']='NA';df['position']='NA';df['team']='NA';df['starting_risk']='NA';df['form_top6adjusted']='NA';df['history']='NA';df['minutes']='NA';df['fulltime']='NA';df['fullhour']='NA';df['bps']='NA'
         # df = df.sort_values(by=['count'],ascending=False)
         df = df.reset_index(drop=True)
         for num,ids in enumerate( tqdm_notebook(df['id']) ):
@@ -967,10 +991,18 @@ class Rivalry:
                     name = GrabFunctions.grab_player_name(tup[0])
                     print(f'{name}: {tup[1]}')
             return
-        genius_changes()
-        genius_movements()
-        genius_matches()
-        genius_numbers()
+        operations = [
+            lambda: genius_changes(),
+            lambda: genius_movements(),
+            lambda: genius_matches(),
+            lambda: genius_numbers(),
+        ]
+        for operation in operations:
+            try:
+                operation()
+            except Exception as e:
+                print(f"Error encountered in 'Rivalry' operation ({operation}): {e}")
+                pass
     
 class PrintStatements: 
     
@@ -1310,18 +1342,18 @@ class DataPlotter:
             3: '#DA291C',   # Bournemouth
             4: '#FDB913',   # Brentford
             5: '#0057B8',   # Brighton & Hove Albion
-            6: '#034694',   # Chelsea
-            7: '#1B458F',   # Crystal Palace
-            8: '#003399',   # Everton
-            9: '#F5A646',   # Fulham
-            10: '#FFD700',  # Leeds United
-            11: '#0053A0',  # Leicester City
-            12: '#C8102E',  # Liverpool
+            6: '#FFD700',   #Burnley
+            7: '#034694',   # Chelsea
+            8: '#1B458F',   # Crystal Palace
+            9: '#003399',   # Everton
+            10: '#F5A646',  # Fulham
+            11: '#C8102E',  # Liverpool
+            12: '#0053A0',  # Luton Town
             13: '#6CABDD',  # Manchester City
             14: '#DA291C',  # Manchester United
             15: '#241F20',  # Newcastle United
             16: '#BD1E2C',  # Nottingham Forest
-            17: '#D71920',  # Southampton
+            17: '#D71920',  # Sheffield United
             18: '#001C58',  # Tottenham Hotspur
             19: '#7A263A',  # West Ham United
             20: '#FDB913'   # Wolverhampton Wanderers
@@ -1400,7 +1432,7 @@ class DecisionMatrix:
             minutes = df['minutes'].iloc[0]
             xGC = df['expected_goals_conceded'].iloc[0]
             cost = df['changing_value'].iloc[0][-1]
-            if position == 'DEF':
+            if position in ['DEF','GKP']:
                 self.players.append({'id':num,'position':position,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'xGC':(np.mean(xGC[-6:]),xGC[-6:]), 'minutes':minutes[-6:], 'cost':cost/10})
             else:
                 self.players.append({'id':num,'position':position,'name':GrabFunctions.grab_player_name(num), 'history':(np.mean(history[-6:]),history[-6:]), 'bps':(np.mean(bps[-6:]),bps[-6:]), 'ict':(np.mean(ICT[-6:]),ICT[-6:]), 'xGI':(np.mean(xGI[-6:]),xGI[-6:]), 'minutes':minutes[-6:], 'cost':cost/10})
@@ -1460,15 +1492,16 @@ class DecisionMatrix:
         # print(unique_values)
         self.replacement_players=[]
         def passes_xGI_threshold(numbers):
-            last_three = numbers[-3:]
-            combinations = [(last_three[0], last_three[1]),
-                            (last_three[0], last_three[2]),
-                            (last_three[1], last_three[2])]
+            if len(numbers) >= 3:
+                last_three = numbers[-3:]
+                combinations = [(last_three[0], last_three[1]),
+                                (last_three[0], last_three[2]),
+                                (last_three[1], last_three[2])]
 
-            for a, b in combinations:
-                average = (a + b) / 2
-                if average > 0.5:
-                    return True
+                for a, b in combinations:
+                    average = (a + b) / 2
+                    if average > 0.5:
+                        return True
 
             return False
         for key in unique_values.keys():
@@ -1503,8 +1536,8 @@ class DecisionMatrix:
         
     @classmethod
     def initialize_effective_ownership(self):    
-        RIVALS_INIT = [829431,#Just Quiet
-                       478233,#GreatestShow
+        RIVALS_INIT = [782655,#Just Quiet
+                       467038,#GreatestShow
                        'genius']
         counter_dict = {}
         #Find IDs with ranks
@@ -1685,18 +1718,18 @@ class DecisionMatrix:
             'BOU': {'bg': (206, 75, 75), 'text': (0, 0, 0)},
             'BRE': {'bg': (255, 178, 180), 'text': (0, 0, 0)},
             'BHA': {'bg': (48, 76, 143), 'text': (255, 255, 255)},
+            'BUR': {'bg': (210, 210, 210), 'text': (0, 0, 0)},
             'CHE': {'bg': (59, 89, 152), 'text': (255, 255, 255)},
             'CRY': {'bg': (155, 57, 98), 'text': (255, 255, 255)},
             'EVE': {'bg': (43, 76, 116), 'text': (255, 255, 255)},
             'FUL': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
-            'LEI': {'bg': (51, 93, 158), 'text': (246, 205, 96)},
-            'LEE': {'bg': (210, 210, 210), 'text': (0, 0, 0)},
             'LIV': {'bg': (100, 210, 156), 'text': (193, 53, 81)},
+            'LUT': {'bg': (51, 93, 158), 'text': (246, 205, 96)},
             'MCI': {'bg': (149, 200, 210), 'text': (0, 0, 0)},
             'MUN': {'bg': (195, 68, 75), 'text': (246, 205, 96)},
             'NEW': {'bg': (105, 105, 105), 'text': (255, 255, 255)},
             'NFO': {'bg': (195, 68, 75), 'text': (255, 255, 255)},
-            'SOU': {'bg': (220, 220, 220), 'text': (220, 87, 103)},
+            'SHE': {'bg': (220, 220, 220), 'text': (220, 87, 103)},
             'TOT': {'bg': (64, 92, 138), 'text': (255, 255, 255)},
             'WHU': {'bg': (146, 72, 72), 'text': (255, 255, 255)},
             'WOL': {'bg': (246, 205, 96), 'text': (0, 0, 0)}
@@ -1801,8 +1834,8 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              round(plyr_dict['xGC'][0],2),
                              self.get_gradient_color(cost,min(cost,3.8),7,max(cost,13)),
-                             self.get_ownership(plyr_dict['id'],league_id=829431,format_color=format_color),
-                             self.get_ownership(plyr_dict['id'],league_id=478233,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id=782655,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id=467038,format_color=format_color),
                              self.get_ownership(plyr_dict['id'],league_id='gen_1k',format_color=format_color),
                              self.get_ownership(plyr_dict['id'],league_id='gen_10k',format_color=format_color),
                              self.get_ownership(plyr_dict['id'],league_id='gen_100k',format_color=format_color),
@@ -1822,8 +1855,8 @@ class DecisionMatrix:
                              self.get_static_color(plyr_dict['minutes'],'minutes'),
                              '-',
                              self.get_gradient_color(cost,min(cost,3.8),7,max(cost,13)),
-                             self.get_ownership(plyr_dict['id'],league_id=829431,format_color=format_color),
-                             self.get_ownership(plyr_dict['id'],league_id=478233,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id=782655,format_color=format_color),
+                             self.get_ownership(plyr_dict['id'],league_id=467038,format_color=format_color),
                              self.get_ownership(plyr_dict['id'],league_id='gen_1k',format_color=format_color),
                              self.get_ownership(plyr_dict['id'],league_id='gen_10k',format_color=format_color),
                              self.get_ownership(plyr_dict['id'],league_id='gen_100k',format_color=format_color),
@@ -1918,7 +1951,407 @@ class DecisionMatrix:
 DecisionMatrix.initialize_players()
 DecisionMatrix.initialize_replacements()
 DecisionMatrix.initialize_effective_ownership()
+
+from understatapi import UnderstatClient
+import pandas as pd
+from fuzzywuzzy import fuzz
+from fuzzywuzzy import process
+
+class UnderstatProcessing:
+    def __init__(self):
+        #################  MATCHING UDID to FPLID  ############################################
+        #Teams=======================================================================================================================================
+        print('Matching FPL teams to UnderStat teams...')
+        fpl_ids = FPLDatabase.teams['id'].tolist()
+        fpl_names = FPLDatabase.teams['name'].tolist()
+#         self.fpl_short_names = FPLDatabase.teams['short_name'].tolist()
+        self.fpl_nums = list(zip(fpl_ids,fpl_names))
+        with UnderstatClient() as understat:
+            league_szn_team_stats = understat.league(league="EPL").get_team_data(season="2023")
+            understat_nums_unsorted = [(x['id'],x['title']) for x in league_szn_team_stats.values()]
+            self.understat_nums = sorted(understat_nums_unsorted, key=lambda x: x[1])
+        self.team_nums = list(zip(self.fpl_nums,self.understat_nums))
+        #Players======================================================================================================================================
+        print('Matching FPL players to UnderStat players...')
+        league_player_data = understat.league(league="EPL").get_player_data(season="2024")
+        player_data_understat = pd.DataFrame(data=league_player_data)
+        # Assuming you have DataFrame 1 and DataFrame 2 with columns 'Name' and 'ID'
+        df1 = player_data_understat[['id','player_name','team_title']]
+        df2 = FPLDatabase.total_summary[['id_player','first_name','second_name','web_name','name']]
+        # df2['player_name'] = df2['first_name'] + " " + df2['second_name'] 
+        # column_mapping = {'id_player': 'id'}
+        column_mapping = {'id_player': 'id', 'web_name': 'player_name'}
+        df2 = df2.rename(columns=column_mapping)
+        df2['combined_name'] = df2['first_name'] + " " + df2['second_name']
+        # Create a new DataFrame to store the matched IDs
+        matched_df = pd.DataFrame(columns=['ID_understat', 'ID_FPL'])
+        # Iterate over each row in DataFrame 1
+        player_nums = []
+        for index, row in df1.iterrows():
+            #Understat data
+            name_df1 = row['player_name']
+            id_df1 = row['id']
+            team_df1 = row['team_title'].split(",")[-1]
+            #Fpl data
+            try:
+                fpl_team_name = [x[0][1] for x in self.team_nums if x[1][1] == team_df1][0]
+                relevant_fpl_df = df2.loc[df2['name'] == fpl_team_name]
+            except Exception as e:
+                print(team_df1)
+                print(e)
+            # Find the closest match in DataFrame 2
+            closest_match = process.extractOne(name_df1, relevant_fpl_df['combined_name'], scorer=fuzz.ratio)
+#             print(f'{name_df1} {team_df1} {closest_match}')
+            # Assuming a minimum threshold of 80 for matching (adjust as needed)
+            if closest_match[1] >= 40:
+                matched_name_df2 = closest_match[0]
+                matched_index_df2 = df2[df2['combined_name'] == matched_name_df2].index[0]
+                id_df2 = df2.at[matched_index_df2, 'id']
+                matched_df = matched_df.append({'ID_understat': int(id_df1), 'ID_FPL': int(id_df2)}, ignore_index=True)
+                player_nums.append(((id_df2,matched_name_df2),(id_df1,name_df1)))
+            else:
+                print(f'Issues with: {name_df1} {team_df1} {closest_match}')
+#         self.df1=df1
+#         self.df2=df2
+        self.full_players_nums_df=matched_df
+        self.player_nums = player_nums
+        # Print the matched DataFrame
+        print(f'{len(self.full_players_nums_df)} / {len(df1)} players processed...')
+        #============================================================================================================================================
+        #################### BUILDING TEAM DATASETS ##############################################
+        print('Building team stats for season so far...')
+        understat = UnderstatClient()
+        data_team = understat.league(league="EPL").get_team_data(season="2023")
+        new_team_data = {}
+        # Iterate over the teams in the data
+        for team_id, team_data in data_team.items():
+            # Copy the team's data to the new_data dictionary
+            new_team_data[team_id] = team_data.copy()
+            # Initialize a dictionary to hold the lists of values for the 'history' key
+            new_history = {}
+            # Iterate over the dictionaries in the 'history' list
+            for game in team_data['history']:
+                # Iterate over the keys and values in each dictionary
+                for key, value in game.items():
+                    # If the key is not already in the new_history dictionary, add it with an empty list as the value
+                    if key not in new_history:
+                        new_history[key] = []
+                    # Append the value to the list for this key
+                    new_history[key].append(value)
+            # Replace the 'history' key in the new_data dictionary with the new_history dictionary
+            new_team_data[team_id]['history'] = new_history
+        self.new_team_data = new_team_data
         
+    def grab_player_USID_from_FPLID(self, FPL_ID):
+        return int([x[1][0] for x in self.player_nums if str(x[0][0]) == str(FPL_ID)][0])
+        
+    def grab_team_USID_from_FPLID(self, FPL_ID):
+        return int([x[1][0] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0])
+        
+    def grab_team_USname_from_FPLID(self, FPL_ID):
+        return [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
+    
+    #################################### TEAM FUNCTIONS ##############################################
+    
+    def fetch_team_xg_stats(self,FPL_ID):
+        """
+        Function returns xG of a specified team against all teams so far. Use fetch team all stats for expanded view
+        """
+        team_name = [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
+        formatted_team_name = team_name.replace(" ", "_")
+        with UnderstatClient() as understat:
+            team_match_data = understat.team(team=formatted_team_name).get_match_data(season="2023")
+        dfdata = []
+        for gw,data in enumerate(team_match_data):
+            side = data['side']
+            def opposite_side(side):
+                if side == 'h':
+                    return 'a'
+                elif side == 'a':
+                    return 'h'
+            opposing_team = data[opposite_side(side)]['title']
+            dfdata.append([gw+1,data['xG'][side],opposing_team])
+        df = pd.DataFrame(data=dfdata,columns=['GW','xG','Team_Against'])
+        return df
+    
+    def fetch_all_team_expanded_stats(self,FPL_ID):
+        """
+        Function returns all values for all games of this season
+        """
+        rows = []
+        for team_id, team_data in new_team_data.items():
+            row = team_data['history'].copy()  # Copy the history data
+            row['id'] = team_data['id']  # Add the team id
+            row['title'] = team_data['title']  # Add the team title
+            rows.append(row)
+        team_df = pd.DataFrame(rows)
+        return team_df
+    
+    def fetch_all_team_finite_stats(self,look_back):
+        """
+        Function returns all stats of all teams over a certain look back period, thus reducing to a finite value, both outputting averages and sums of all stats. 
+        Usefulness is in stats like PPDA which outline how well-pressing certain teams are, which can be later be used to match up upcoming 
+        teams and assess weaknesses based on general PPDA and specific PPDA.
+        """
+        rows1,rows2 = [],[]
+        for team_id, team_data in new_team_data.items():
+            row1 = {'id': team_data['id'], 'title': team_data['title']}  # Initialize the row with the team id and title
+            row2 = {'id': team_data['id'], 'title': team_data['title']}  # Initialize the row with the team id and title
+            for key, values in team_data['history'].items():
+                if key == 'ppda':
+                    # For the 'ppda' key, create separate columns for 'att' and 'def'
+                    row1['ppda_att'] = np.mean([value['att'] for value in values[-look_back:]])
+                    row1['ppda_def'] = np.mean([value['def'] for value in values[-look_back:]])
+                    row2['ppda_att'] = np.sum([value['att'] for value in values[-look_back:]])
+                    row2['ppda_def'] = np.sum([value['def'] for value in values[-look_back:]])
+                elif key == 'ppda_allowed':
+                    # For the 'ppda' key, create separate columns for 'att' and 'def'
+                    row1['ppda_allowed_att'] = np.mean([value['att'] for value in values[-look_back:]])
+                    row1['ppda_allowed_def'] = np.mean([value['def'] for value in values[-look_back:]])
+                    row2['ppda_allowed_att'] = np.sum([value['att'] for value in values[-look_back:]])
+                    row2['ppda_allowed_def'] = np.sum([value['def'] for value in values[-look_back:]])
+                elif key in ['h_a','result','date','id','title']:
+                    continue
+                else:
+                    # For other keys, calculate the average of the values
+                    row1[key] = np.mean(values[-look_back:])
+                    row2[key] = np.sum(values[-look_back:])
+            rows1.append(row1)
+            rows2.append(row2)
+        team_df1 = pd.DataFrame(rows1)
+        team_df1 = team_df1.sort_values('npxGD', ascending=False)
+        team_df2 = pd.DataFrame(rows2)
+        team_df2 = team_df2.sort_values('npxGD', ascending=False)
+        return team_df1,team_df2
+    
+    #################################### PLAYER FUNCTIONS ##############################################
+    
+    def fetch_player_shot_data(self, FPL_ID):
+        understat = UnderstatClient()
+        player_shot_data = understat.player(player=str(self.grab_player_USID_from_FPLID(FPL_ID))).get_shot_data()
+        df = pd.DataFrame(data=player_shot_data)
+        parsed_time = datetime.fromisoformat(FPLDatabase.SZN_START_TIME[:-1])
+        formatted_string = parsed_time.strftime("%Y-%m-%d")
+        date_string = formatted_string
+        date_format = "%Y-%m-%d"
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.loc[df['date']>=datetime.strptime(date_string, date_format)]
+        # Group by 'round' (colY) and count 'hit' or 'miss' occurrences (colX)
+        grouped = df.groupby(['result', 'match_id','h_team','a_team']).size().reset_index(name='count')
+        # Pivot the grouped DataFrame to have 'hit' and 'miss' counts per round
+        chance_summary = grouped.pivot_table(index=['match_id','h_team','a_team'], columns='result', values='count', fill_value=0)
+        # Reset the index and rename the columns
+        chance_summary.reset_index(inplace=True)
+        chance_summary.columns.name = None
+        # result.rename(columns={'colY': 'round', 'hit': 'number_hits', 'miss': 'number_misses'}, inplace=True)
+        # Add a new column that sums the 'left_hits' and 'right_hits' columns
+        # result['shots'] = result['left_hits'] + result['right_hits']
+        chance_summary['Total Shots']  = chance_summary.drop(['match_id','h_team','a_team'], axis=1).sum(axis=1)
+        
+        # Filter DataFrame to only include rows with 'hit'
+        hits_df = df[df["result"] == "Goal"]
+        # Group by 'round' (colY) and count 'hit' or 'miss' occurrences (colX)
+        grouped = hits_df.groupby(['shotType', 'match_id','h_team','a_team']).size().reset_index(name='count')
+        # Pivot the grouped DataFrame to have 'hit' and 'miss' counts per round
+        goal_summary = grouped.pivot_table(index=['match_id','h_team','a_team'], columns='shotType', values='count', fill_value=0)
+        # Reset the index and rename the columns
+        goal_summary.reset_index(inplace=True)
+        goal_summary.columns.name = None
+        return chance_summary, goal_summary
+    
+    def fetch_player_shots_against_teams(self, FPL_ID, TEAM_AGAINST_ID):
+        understat = UnderstatClient()
+        player_shot_data = understat.player(player=str(self.grab_player_USID_from_FPLID(FPL_ID))).get_shot_data()
+        df = pd.DataFrame(data=player_shot_data)
+        team_dict = {}
+        for index, row in df.iterrows():
+            season = row['season']
+            result  = row['result']
+            shot_type = row['shotType']
+            situation = row['situation']
+            if row['h_a'] == 'h':
+                team = row['a_team']
+                if team not in team_dict:
+                    team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+                if season not in team_dict[team]['seasons']:
+                    team_dict[team]['seasons'][season] = {'h': {}, 'a': {}}
+                if shot_type not in team_dict[team]['seasons'][season]['h'].keys():
+                    team_dict[team]['seasons'][season]['h'][shot_type] = []
+                team_dict[team]['seasons'][season]['h'][shot_type].append((situation, result))
+                if result == 'Goal':
+                    team_dict[team]['h'] += 1
+            elif row['h_a'] == 'a':
+                team = row['h_team']
+                if team not in team_dict:
+                    team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+                if season not in team_dict[team]['seasons']:
+                    team_dict[team]['seasons'][season] = {'h': {}, 'a': {}}
+                if shot_type not in team_dict[team]['seasons'][season]['a'].keys():
+                    team_dict[team]['seasons'][season]['a'][shot_type] = []
+                team_dict[team]['seasons'][season]['a'][shot_type].append((situation, result))
+                if result == 'Goal':
+                    team_dict[team]['a'] += 1
+
+        # Create dataframe from team dictionary
+        output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
+        output_df.columns = ['Team', 'h', 'a', 'full_summary']
+        def order_season_by_year(season):
+            return {year: season[year] for year in sorted(season.keys())}
+        output_df['full_summary'] = output_df['full_summary'].apply(order_season_by_year)
+        output_df = output_df.sort_values(by=['Team']).reset_index(drop=True)
+        #Tally up against a team
+        spreaded_stats = {}
+        for szn,data in output_df.loc[output_df['Team'] == self.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]['full_summary'].iloc[0].items():
+#             print(f'{szn}---> {data}')
+            spreaded_stats[szn]={}
+            for h_a, shotdata in data.items():
+#                 print(h_a)
+        #         print(shotdata)
+                tally = {}
+                for foot, datalist in shotdata.items():
+                    tally[foot] = {'goals':[], 'misses':[]}
+                    for shot in datalist:
+                        if 'Goal' in shot:
+                            tally[foot]['goals'].append(shot)
+                        else:
+                            tally[foot]['misses'].append(shot)
+                spreaded_stats[szn][h_a] = tally
+        return spreaded_stats
+    
+    def fetch_player_stats_against_teams(self, FPL_ID, TEAM_AGAINST_ID):
+        understat = UnderstatClient()
+        player_match_data = understat.player(player=str(self.grab_player_USID_from_FPLID(FPL_ID))).get_match_data()
+        player_match_df = pd.DataFrame(data=player_match_data)
+        player_match_df['h_a'] = ''
+        player_team = self.grab_team_USname_from_FPLID(GrabFunctions.grab_player_team_id(FPL_ID))
+        # Iterate over each row in df2
+        for index, row in player_match_df.iterrows():
+            season = row['season']
+        #     team = ''
+
+        #     # Find the corresponding team in df1 based on the season
+        #     team_match = szn_df[szn_df['season'] == season]
+
+        #     if not team_match.empty:
+        #         team = team_match['team'].values[0]
+            team = player_team
+
+            # Check if the team is in 'h_team' or 'a_team' and update 'h_a' accordingly
+            if team in row['h_team']:
+                player_match_df.at[index, 'h_a'] = 'h'
+            elif team in row['a_team']:
+                player_match_df.at[index, 'h_a'] = 'a'
+            else:
+                player_match_df.at[index, 'h_a'] = 'NA'
+#         print(player_match_df)
+        team_dict = {}
+
+        for index, row in player_match_df.iterrows():
+            goals = int(row['goals'])
+            if goals > 0:
+                if row['h_a'] == 'h':
+                    team = row['a_team']
+                    season = row['season']
+                    if team not in team_dict:
+                        team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+                    if season not in team_dict[team]['seasons']:
+                        team_dict[team]['h'] += goals
+                        team_dict[team]['a'] += 0
+                        team_dict[team]['seasons'][season] = {'h': goals, 'a': 0}
+                    else:
+                        team_dict[team]['h'] += goals
+                        team_dict[team]['seasons'][season]['h'] += goals
+                elif row['h_a'] == 'a':
+                    team = row['h_team']
+                    season = row['season']
+                    if team not in team_dict:
+                        team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+                    if season not in team_dict[team]['seasons']:
+                        team_dict[team]['h'] += 0
+                        team_dict[team]['a'] += goals
+                        team_dict[team]['seasons'][season] = {'h': 0, 'a': goals}
+                    else:
+                        team_dict[team]['a'] += goals
+                        team_dict[team]['seasons'][season]['a'] += goals
+            else:
+                if row['h_a'] == 'h':
+                    team = row['a_team']
+                elif row['h_a'] == 'a':
+                    team = row['h_team']
+                else:
+                    continue
+                season = row['season']
+                if team not in team_dict:
+                    team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+                if season not in team_dict[team]['seasons']:
+                    team_dict[team]['seasons'][season] = {'h': 0, 'a': 0}
+#         print(team_dict)
+
+        def calculate_coefficient_of_variation(goals, h_a):
+            h_goals = [data['h'] for data in goals.values()]
+            a_goals = [data['a'] for data in goals.values()]
+            if len(goals) <= 1 or sum(h_goals) + sum(a_goals) == 0:
+                return None
+            if h_a == 'total': 
+                mean_h = statistics.mean(h_goals)
+                mean_a = statistics.mean(a_goals)
+                mean = (mean_h + mean_a) / 2
+                h_standard_deviation = statistics.stdev(h_goals)
+                a_standard_deviation = statistics.stdev(a_goals)
+                standard_deviation = (h_standard_deviation + a_standard_deviation) / 2
+                coefficient_of_variation = (standard_deviation / mean) * 100
+            elif h_a == 'h':
+                if sum(h_goals) == 0:
+                    return None
+                mean_h = statistics.mean(h_goals)
+                h_standard_deviation = statistics.stdev(h_goals)
+                coefficient_of_variation = (h_standard_deviation / mean_h) * 100
+            elif h_a == 'a':
+                if sum(a_goals) == 0:
+                    return None
+                mean_a = statistics.mean(a_goals)
+                a_standard_deviation = statistics.stdev(a_goals)
+                coefficient_of_variation = (a_standard_deviation / mean_a) * 100      
+            return coefficient_of_variation
+
+        def calculate_goal_avg(goals):
+
+            h_goals = [data['h'] for data in goals.values()]
+            a_goals = [data['a'] for data in goals.values()]
+
+            avg_goals = (sum(h_goals) + sum(a_goals)) / (2*len(goals))
+            return avg_goals
+
+        # Create dataframe from team dictionary
+        output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
+        output_df.columns = ['Team', 'h', 'a', 'season']
+
+        def order_season_by_year(season):
+            return {year: season[year] for year in sorted(season.keys())}
+
+        def calc_matches(szns):
+            return 2*len(szns)
+
+        output_df['season'] = output_df['season'].apply(order_season_by_year)
+
+        output_df['Variation Coefficient (H)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('h',))
+        output_df['Variation Coefficient (A)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('a',))
+        output_df['Variation Coefficient (Total)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('total',))
+
+        output_df['Avg Goals/match'] = output_df['season'].apply(calculate_goal_avg)
+
+        output_df['Matches'] = output_df['season'].apply(calc_matches)
+
+        output_df.sort_values(by=['Team']).reset_index(drop=True)
+        output_df.sort_values(by=['Variation Coefficient (Total)'])
+        
+        output_df = output_df.loc[output_df['Team'] == self.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]
+        
+        return output_df.to_dict()
+    
+# Instantiate an object of the FPLDatabase class
+UnderstatAnalysis = UnderstatProcessing()
+
 # if __name__ == '__main__':
 #     print('\nCompiling FPL team...')
 #     df_out,df_top,df_sum=compile_fpl_team()
