@@ -2352,6 +2352,158 @@ class UnderstatProcessing:
 # Instantiate an object of the FPLDatabase class
 UnderstatAnalysis = UnderstatProcessing()
 
+class RatingManager:
+#     def __init__(self):
+    metric_thresholds = {
+        'ict': (3.5, 5.0, 7.5),
+        'xGI': (0.2, 0.5, 0.9),
+        'history': (4.0, 6.0, 9.0),
+        'bps': (14.0, 21.0, 29.0),
+        'xGC': (1.5,1.0,0.5),
+    }
+        
+    def _calculate_rating(self, metric_values: list, metric_name: str, top_n_gws: int = None):
+        look_back_averager = 6
+
+        min_thr_rating, avg_thr_rating, high_thr_rating = 6.0, 7.5, 9.0
+
+        # Get the thresholds for the given metric_name
+        min_thr, avg_thr, high_thr = self.metric_thresholds.get(metric_name, (0.0, 0.0, 0.0))
+
+        all_ratings = []
+        for metric_value in metric_values[-look_back_averager:]:
+            # Ensure the metric value is not below 0
+            metric_value = max(metric_value, 0)
+
+            # Calculate rating based on the metric value and the metric name
+            if metric_value <= min_thr:
+                rating = (metric_value / min_thr) * min_thr_rating
+            elif metric_value <= avg_thr:
+                rating = min_thr_rating + ((metric_value - min_thr) / (avg_thr - min_thr)) * 1.5
+            elif metric_value <= high_thr:
+                rating = avg_thr_rating + ((metric_value - avg_thr) / (high_thr - avg_thr)) * 1.5
+            else:
+                # Metric value is above high threshold, interpolate to excellent (10), capped at 10
+                if metric_value <= (2 * high_thr):
+                    rating = high_thr_rating + ((metric_value - high_thr) / (2 * high_thr - high_thr)) * 1.0
+                else:
+                    rating = 10.0
+
+            all_ratings.append(rating)
+        if top_n_gws == None:
+            return np.mean(all_ratings)
+        elif type(top_n_gws) == int:
+            sorted_ratings = sorted(all_ratings, reverse=True)
+            return np.mean(sorted_ratings[:top_n_gws])
+        
+    def _calculate_player_form_rating(self, player_dict: dict, top_n_gws: int = None):
+        positional_metric_weightings = {
+            'FWD': {'history': 0.55, 'ict': 0.1, 'xGI': 0.25, 'bps': 0.1},
+            'MID': {'history': 0.55, 'ict': 0.1, 'xGI': 0.25, 'bps': 0.1},
+            'DEF': {'history': 0.6, 'ict': 0.1, 'xGI': 0.1, 'xGC': 0.1, 'bps': 0.1},
+            'GKP': {'history': 0.6, 'ict': 0.1, 'xGC': 0.2, 'bps': 0.1},
+        }
+        metric_weightings = positional_metric_weightings.get(player_dict['position'])
+        metric_ratings = {}
+        for param_name in [x for x in metric_weightings.keys() if x in ['history', 'ict', 'xGI', 'xGC', 'bps']]:
+            rating = self._calculate_rating(player_dict[param_name][1], param_name, top_n_gws)
+            metric_ratings[param_name] = rating
+        total_weighting = sum(metric_weightings.values())
+        normalized_weightings = {metric: weight / total_weighting for metric, weight in metric_weightings.items()}
+        overall_rating = sum(metric_ratings[metric] * normalized_weightings[metric] for metric in metric_ratings)
+
+        return overall_rating
+    
+    def get_player_form_rating(self, values: list, top_n_gws: int = None):
+        players = [x for x in DecisionMatrix.players if x['id'] in values]
+        seq_map = {'GKP':0, 'DEF':1, 'MID':2, 'FWD':3}
+        sorted_players = sorted(players, key=lambda x: (seq_map[x['position']], -x['history'][0]))
+        rating_summary = {}
+        for plyr_dict in sorted_players:
+            if plyr_dict['position'] in ['MID', 'FWD','DEF']:
+                overall_rating = self._calculate_player_form_rating(plyr_dict, top_n_gws)
+                rating_summary[plyr_dict['id']] = overall_rating
+        sorted_items = sorted(rating_summary.items(), key=lambda item: item[1], reverse=True)
+        return sorted_items
+
+    #===============================================================
+    
+    def calculate_team_rating(self, player_id):
+        team_id_fpl = GrabFunctions.grab_player_team_id(player_id)
+        team_id = UnderstatAnalysis.grab_team_USID_from_FPLID(team_id_fpl)
+        team_info = UnderstatAnalysis.new_team_data.get(str(team_id))
+
+        # Weighing factors for the rating
+        weights = {
+            'wins': 3,
+            'draws': 1,
+            'loses': -3,
+            'xG': 2,
+            'xGA': -2,
+            'pts': 2,
+            'npxGD': 2
+        }
+
+        # Calculate the weighted sum for each factor
+        weighted_sum = sum(weights[key] * sum(team_info['history'][key]) for key in weights)
+
+        # Normalize the weighted sum to get the rating in the range of 1 to 10
+        min_weighted_sum = min(weights.values()) * sum(len(team_info['history'][key]) for key in weights)
+        max_weighted_sum = max(weights.values()) * sum(len(team_info['history'][key]) for key in weights)
+        normalized_rating = ((weighted_sum - min_weighted_sum) / (max_weighted_sum - min_weighted_sum)) * 9 + 1
+
+        # Ensure the rating is within the valid range of 1 to 10
+        rating = max(1, min(normalized_rating, 10))
+
+        return rating
+    
+    def calculate_upcoming_FDR_rating(self, player_id):
+        upcoming_fixture_list = GrabFunctions.player_fixtures('fwd',GrabFunctions.grab_player_team_id(player_id),4)
+        home_away_info = [x[1][0][2] for x in upcoming_fixture_list]
+        difficulty_ratings = [x[1][0][3] for x in upcoming_fixture_list]
+        # Weighing factors for the rating
+        difficulty_weights = {1: 4.5, 2: 4, 3: 3, 4: 1.5, 5: 0.5}  # Higher difficulty means a tougher match
+        home_weight = 1.2  # Weight for home games
+
+        # Calculate the weighted sum of difficulty ratings based on home/away
+        weighted_sum = sum(difficulty_weights[rating] * (home_weight if location == 'H' else 1)
+                           for rating, location in zip(difficulty_ratings, home_away_info))
+        # Calculate the average weighted difficulty rating
+        average_weighted_difficulty = weighted_sum / len(difficulty_ratings)
+
+        # Normalize the average weighted difficulty to get the rating in the range of 1 to 10
+        min_weighted_difficulty = min(difficulty_weights.values())
+        max_weighted_difficulty = max(difficulty_weights.values())
+        normalized_rating = ((average_weighted_difficulty - min_weighted_difficulty)
+                             / (max_weighted_difficulty - min_weighted_difficulty)) * 9 + 1
+
+        # Ensure the rating is within the valid range of 1 to 10
+        rating = max(1, min(normalized_rating, 10))
+        return rating
+
+#============================================================================================  
+
+    def calculate_total_player_rating(self, PLAYER_ID,  top_n_gws = None, output_all = False):
+        player_rating = self.get_player_form_rating([PLAYER_ID],top_n_gws)[0][1]
+        team_rating = self.calculate_team_rating(PLAYER_ID)
+        FDR_rating = self.calculate_upcoming_FDR_rating(PLAYER_ID)
+
+        weights = [0.45,0.35,0.2]
+        metric_ratings = [player_rating, team_rating, FDR_rating]
+
+        # Calculate the weighted sum of metric ratings
+        weighted_sum = sum(metric * weight for metric, weight in zip(metric_ratings, weights))
+
+        # Normalize the weighted sum to get the overall rating
+        overall_rating = weighted_sum
+        if output_all:
+            return metric_ratings, overall_rating
+        else:
+            return overall_rating
+
+# Instantiate an object of the FPLDatabase class
+RatingManager = RatingManager()
+    
 # if __name__ == '__main__':
 #     print('\nCompiling FPL team...')
 #     df_out,df_top,df_sum=compile_fpl_team()
