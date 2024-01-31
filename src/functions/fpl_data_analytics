@@ -1,0 +1,729 @@
+class FixtureMath:
+
+    def rem_fixtures_difficulty(idx: int):
+        base_url = 'https://fantasy.premierleague.com/api/'
+
+        # get data from 'element-summary/{PID}/' endpoint for PID=4
+        r = requests.get(base_url + 'element-summary/' + str(idx) + '/').json()
+        difflist=[]
+        for diff in r['fixtures']:
+            difflist.append(diff['difficulty'])
+
+        rec='-X-'
+        if sum(i <= 3 for i in difflist[:3]) >= 2 or sum(i <= 2 for i in difflist[:4]) >= 3:
+            rec = 'ST'
+        if sum(i <= 2 for i in difflist[:3]) >= 2:
+            rec = 'ST+'        
+        if sum(i <= 2 for i in difflist[:3]) == 3:
+            rec = 'ST++'
+        if sum(i <= 3 for i in difflist[:5]) >= 4:
+            rec = 'MT'
+            if sum(i <= 2 for i in difflist[:5]) >= 4:
+                rec = 'MT+'
+        if sum(i <= 3 for i in difflist[:7]) >= 5:
+            rec = 'LT'
+            if sum(i <= 2 for i in difflist[:7]) >= 5:
+                rec = 'LT+'
+                if sum(i <= 2 for i in difflist[:7]) >= 6:
+                    rec = 'LT++'
+        if sum(i <= 3 for i in difflist[:10]) >= 8:
+            rec = 'VLT'
+            if sum(i <= 2 for i in difflist[:10]) >= 8:
+                rec = 'VLT+'
+        return (rec,difflist)
+    
+    def look_for_blanks_and_dgws():
+        GWS={}
+        baseurl = 'https://fantasy.premierleague.com/api/fixtures/'
+        req = requests.get(baseurl).json()
+        for row in req:
+            GW = row['event']
+            if GW:
+                if GW not in GWS.keys():
+                    GWS[GW] = []
+                GWS[GW].extend((row['team_a'],row['team_h']))
+        BLANKS={}
+        DGWS={}
+        for gw,teams in GWS.items():
+            BLANKS[gw] = [x for x in range(1,21) if x not in teams]
+            DGWS[gw] = [x for x in teams if teams.count(x) > 1]
+        BLANKS = {k: v for k, v in BLANKS.items() if v}
+        DGWS = {k: v for k, v in DGWS.items() if v}
+        return BLANKS,DGWS
+    
+
+class BestOfTheBest:
+    
+    def top_performers_by_mean(toplist = None,personal = None):
+        '''
+        Grab return history of provided list of IDs, and look back in various GW windows of either previous 6, 3 or 2 GWs.
+        Count returns (0 for no return (0-3 pts), 1 for single digit return, 2 for double digit return)
+        
+        '''
+        count_dict={}
+        #First 3 statements are at start of FPL where only few seasons available
+        if FPLDatabase.LATEST_GW == 1:
+            LOOK_BACK_LIST = [1]
+        elif FPLDatabase.LATEST_GW == 2:
+            LOOK_BACK_LIST = [2]
+        elif FPLDatabase.LATEST_GW < 6:
+            LOOK_BACK_LIST = [3,2]
+        else:
+            LOOK_BACK_LIST = [6,3,2]
+        base_url = 'https://fantasy.premierleague.com/api/'
+        returns_nontop6={}
+        for idx in toplist:
+            recent_returns_bank = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['id_player'] == idx]['returnhist'].iloc[0]
+            for look_back in LOOK_BACK_LIST:
+                if look_back == 6:
+                    recent_returns = recent_returns_bank[-look_back:]
+                    count = recent_returns.count(1) + recent_returns.count(2)
+                    thresh = 4
+                    if count == 3:
+                        if recent_returns.count(2) >= 1:
+                            thresh = 3
+                elif look_back == 3:
+                    recent_returns = recent_returns_bank[-look_back:]
+                    count = recent_returns.count(1) + recent_returns.count(2)
+                    thresh = 3
+                    if count == 2:    
+                        recent_returns2 = recent_returns_bank[-4:]
+                        count2 = recent_returns2.count(1) + recent_returns2.count(2)
+                        if recent_returns.count(2) >= 1:
+                            thresh = 2
+                        elif count2 == 3:
+                            thresh = 2
+                elif look_back == 2:
+                    recent_returns = recent_returns_bank[-look_back:]
+                    count = recent_returns.count(1) + recent_returns.count(2)
+                    thresh = 2
+                elif look_back == 1:
+                    recent_returns = recent_returns_bank[-look_back:]
+                    count = recent_returns.count(1) + recent_returns.count(2)
+                    thresh = 1
+                else:
+                    continue
+                if count >= thresh:
+                    if str(idx) in count_dict.keys():
+                        count_dict[str(idx)] += 1
+                    else:
+                        count_dict[str(idx)] = 1
+                elif count < thresh and personal is not None:
+                    if str(idx) not in count_dict.keys():
+                        count_dict[str(idx)] = 0
+            recent_returns = recent_returns_bank[-10:]
+            count = recent_returns.count(1) + recent_returns.count(2)
+            if count >= 2:
+                r = requests.get(base_url + 'element-summary/' + str(idx) + '/').json()
+                teams = []
+                for dictr in r['history'][-10:]:
+                    opponent_team_id = dictr['opponent_team']
+                    teamrank = GrabFunctions.team_rank(opponent_team_id)
+                    teams.append(teamrank)
+                calibrated_returns=[]
+                for ind,num in enumerate(recent_returns):
+                    if teams[ind] < 4 or (teams[ind] >= 4 and num > 0):
+                        calibrated_returns.append(num)
+                returns_nontop6[str(idx)] = calibrated_returns
+                count = calibrated_returns.count(1) + calibrated_returns.count(2)
+                if count/len(calibrated_returns) > 0.5:
+                    if (personal is None and str(idx) not in count_dict.keys()) or (personal is not None and count_dict[str(idx)] == 0):
+                        count_dict[str(idx)] = '-!-'
+
+        df = pd.DataFrame({'id':count_dict.keys(),'count':count_dict.values()})
+        df['id'] = df['id'].astype(int)
+        df['count'] = df['count'].astype(str)
+        df['player']='NA';df['value']='NA';df['position']='NA';df['team']='NA';df['starting_risk']='NA';df['form_top6adjusted']='NA';df['history']='NA';df['minutes']='NA';df['fulltime']='NA';df['fullhour']='NA';df['bps']='NA'
+        # df = df.sort_values(by=['count'],ascending=False)
+        df = df.reset_index(drop=True)
+        for num,ids in enumerate( tqdm_notebook(df['id']) ):
+            recent_returns = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['id_player'] == int(ids)]['returnhist'].iloc[0][-6:]
+            count = recent_returns.count(1) + recent_returns.count(2)
+            df.loc[num,'player'] = GrabFunctions.grab_player_name(int(ids))
+            df.loc[num,'value'] = GrabFunctions.grab_player_value(int(ids))
+            df.loc[num,'position'] = GrabFunctions.grab_player_pos(int(ids))
+            df.loc[num,'team'] = GrabFunctions.grab_player_team(int(ids))
+            df.loc[[num],'history'] = pd.Series([GrabFunctions.grab_player_hist(int(ids))],index=[num])
+            df.loc[[num],'minutes'] = pd.Series([GrabFunctions.grab_player_minutes(int(ids))],index=[num])
+            df.loc[[num],'bps'] = pd.Series([GrabFunctions.grab_player_bps(int(ids))],index=[num])
+            df.loc[num,'fulltime'] = GrabFunctions.grab_player_full90s(int(ids))
+            df.loc[num,'fullhour'] = GrabFunctions.grab_player_full60s(int(ids))
+            if str(ids) in returns_nontop6.keys():
+                df.loc[[num],'form_top6adjusted'] = pd.Series([returns_nontop6[str(ids)][-6:]],index=[num])
+            if count >= 4:
+                df.loc[num,'count'] = str(df['count'].iloc[num]) +  '*'
+                if count >= 5:
+                    df.loc[num,'count'] = str(df['count'].iloc[num]) +  '*'
+        df = df.fillna(np.nan)
+
+        return df
+    
+    def best_fpl_upgrades(value,fpl_df,personal=None):
+        if personal is None:
+#             df = FPLDatabase.total_summary[['id_player', 'player','value','name','position','history','last6_mean_x','last3_mean_x','minutes','bps']].sort_values(by=['last6_mean_x'],ascending=False).loc[FPLDatabase.total_summary['value']<=value]
+            df = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['value']<=value]
+            # print(df['player'])
+            # print(fpl_df['player'])
+            df = df[~df['player'].isin(fpl_df['player'].tolist())]
+        else:
+            df = fpl_df
+        df2 = BestOfTheBest.top_performers_by_mean(df['id_player'].tolist(),personal)
+        df2['fixture_class'] = 'NA';df2['fixtures_diff'] = 'NA';df2['consistency'] = 'NA'
+        for num,id2 in enumerate( tqdm_notebook(df2['id']) ):
+            # print(id2)
+            classifier,fixtures = FixtureMath.rem_fixtures_difficulty(id2)
+            # print(classifier,fixtures)
+            df2.loc[num,'fixture_class'] = classifier
+            df2.loc[[num],'fixtures_diff'] = pd.Series([fixtures],index=[num])
+            returns = GrabFunctions.grab_player_returns(id2)
+            returns = returns[-6:]
+            df2.loc[num,'consistency'] = str(returns.count(1) + returns.count(2)) + "/" + str(len(returns))
+#         df2=df2[['id','player','value','position','team','consistency','count','fixture_class','fixtures_diff','form_top6adjusted','history','minutes','fulltime','fullhour','bps']]
+        # print(df2)
+        return df2
+    
+    def versus(teamlist,df):
+        relevant_df = df.loc[df['id'].isin(teamlist)]
+        df1a=relevant_df.loc[(relevant_df['last6_mean_x'] > 0.66) & (relevant_df['last3_mean_x'] > 0)]
+        df1b=relevant_df.loc[(relevant_df['last6_mean_x'] > 0.33) & (relevant_df['last3_mean_x'] > 0.33)]
+        df1 = pd.concat([df1a,df1b],ignore_index=True)
+        df1 = df1.drop_duplicates(subset=['id'])
+
+        if FPLDatabase.LATEST_GW >= 6:
+            inddrop = []
+            for ind,form in enumerate(df1['form_top6adjusted']):
+                if (form.count(1) + form.count(2)) / len(form) < 0.5:
+                    inddrop.append(ind)
+            df1 = df1.drop(inddrop)        
+
+
+        # print('--------------------------------------------------------------------------')
+        # print(df1)
+        if len(df1) <= 1:
+            filter1 = df1['id'].values.tolist()
+            return filter1
+        else:
+            countthresh = max(df1['count'].unique())
+            df2=df1.loc[(df1['count'] == countthresh)]
+            # print(df2)
+            if len(df2) <= 1:
+                filter2 = df2['id'].values.tolist()
+                return filter2
+            else:
+                valuelow = min(df2['value'].unique())
+                df3=df2.loc[(df1['value'] <= (valuelow + 0.5))]
+                # print(df3)
+                filter3 = df3['id'].values.tolist()
+                return filter3
+
+
+class MyTeam:
+    @classmethod
+    def init(self):
+        def compile_fpl_team():
+            url = FPLDatabase.base_url + 'entry/' + str(FPLDatabase.TEAM_IDX) + '/event/' + str(FPLDatabase.LATEST_GW) + '/picks/'
+            r = requests.get(url).json()
+            MyTeam.bank_value = r['entry_history']['bank']/10
+            if r['active_chip'] and r['active_chip'] == "freehit":
+                url = FPLDatabase.base_url + 'entry/' + str(FPLDatabase.TEAM_IDX) + '/event/' + str(FPLDatabase.LATEST_GW - 1) + '/picks/'
+                r = requests.get(url).json()
+            r = r['picks']
+            id_list = []
+            for elem in r:
+                id_list.append(elem['element'])
+
+            df=pd.DataFrame({})   
+            for ids in id_list:
+                df2 = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['id_player'] == ids]
+                df = pd.concat([df,df2],ignore_index=True)
+            print(f"Squad value: ${sum(df['value'])}")
+            self.df_out = df
+            self.df_top = BestOfTheBest.top_performers_by_mean(df['id_player'].tolist())
+            self.df_sum = df[['id_player', 'player','value','name','position','history','last6_mean_x','last3_mean_x','last2_mean_x','minutes','fulltime','fullhour','bps']].sort_values(by=['last6_mean_x'],ascending=False)
+
+        def compile_fpl_analyses():
+            df = BestOfTheBest.best_fpl_upgrades(99,self.df_sum,True)
+            df = pd.concat([df.sort_values(by=['id'],ascending=False).reset_index(drop=True), 
+                                     self.df_sum[['id_player','last6_mean_x','last3_mean_x','last2_mean_x']
+                                            ].sort_values(by=['id_player'],ascending=False).reset_index(drop=True)], axis=1
+                                    ).drop(['id_player'], axis=1)
+            df = df[['id','player','value','position','team','last6_mean_x','last3_mean_x','last2_mean_x','consistency','count','fixture_class','fixtures_diff','form_top6adjusted','history','minutes','fulltime','fullhour','bps']]
+            self.df_fpl = df
+        
+        compile_fpl_team()
+        compile_fpl_analyses()
+MyTeam.init()
+
+
+class RestOfTheRoster:
+    @classmethod
+    def init(self):
+        
+        def compile_potential_analyses():
+            df = BestOfTheBest.best_fpl_upgrades(99,MyTeam.df_sum)
+            
+            id_list = []
+            for idf in df['id']:
+                id_list.append(idf)
+            df_temp=pd.DataFrame({})   
+            for ids in id_list:
+                df2 = FPLDatabase.total_summary.loc[FPLDatabase.total_summary['id_player'] == ids]
+                df_temp = pd.concat([df_temp,df2],ignore_index=True)
+            df2 = df_temp[['id_player', 'player','value','name','position','history','last6_mean_x','last3_mean_x','last2_mean_x','minutes','fulltime','fullhour','bps']].sort_values(by=['last6_mean_x'],ascending=False)
+            
+            df = pd.concat([df.sort_values(by=['id'],ascending=False).reset_index(drop=True), 
+                                     df2[['id_player','last6_mean_x','last3_mean_x','last2_mean_x']
+                                            ].sort_values(by=['id_player'],ascending=False).reset_index(drop=True)], axis=1
+                                    ).drop(['id_player'], axis=1)
+            df = df[['id','player','value','position','team','last6_mean_x','last3_mean_x','last2_mean_x','consistency','count','fixture_class','fixtures_diff','form_top6adjusted','history','minutes','fulltime','fullhour','bps']]
+            
+            self.df_fpl_potentials = df.sort_values(by=['last6_mean_x'])
+
+        def condense_potentials():
+            df = self.df_fpl_potentials.reset_index(drop=True)
+
+            teams = df.team.unique()
+            df_by_team = {}
+            for team in teams:
+                ids = df['id'].loc[(df['team'] == team)].tolist()
+                df_by_team[team] = ids
+            positions = df.position.unique()
+            df_by_pos = {}
+            for position in positions:
+                ids = df['id'].loc[(df['position'] == position)].tolist()
+                df_by_pos[position] = ids
+            indices_to_drop = []
+
+            ###MINIMIZE to ONE-TWO positions per club
+            grouped_group = {}
+            for pos_key in df_by_pos:
+                pos_ids = df_by_pos[pos_key]
+                grouped_vals={}
+                for ind_id in pos_ids:
+                    for k,v in df_by_team.items():
+                        if ind_id in v:
+                            if k not in grouped_vals:
+                                grouped_vals[k] = [ind_id]
+                            else:
+                                grouped_vals[k].append(ind_id)
+                grouped_group[pos_key] = grouped_vals
+            #################################################
+
+            for ind,row in df.iterrows():
+                cond1 = (row['count'] == '-!-' and row['fixture_class'] == '-X-')
+                if FPLDatabase.LATEST_GW >= 6:
+                    cond2 = (row['form_top6adjusted'].count(2) == 0 and row['form_top6adjusted'].count(1)/len(row['form_top6adjusted']) < 0.5)
+                else:
+                    cond2 = False
+                if any([cond1,cond2]):
+                    indices_to_drop.append(ind)
+                locate_team_group = grouped_group[row['position']][row['team']]
+                # print(f'\n{locate_team_group}')
+                # if len(locate_team_group) > 1:
+                ones_above_all = BestOfTheBest.versus(locate_team_group,df)
+                current_id = row['id']
+                # print(f'{current_id}: {ones_above_all}')
+                if current_id not in ones_above_all:
+                    indices_to_drop.append(ind)
+            #Remove duplicates
+            indices_to_drop = list(dict.fromkeys(indices_to_drop))
+            df = df.drop(indices_to_drop)
+            
+            self.df_prime_potentials = df
+            
+        compile_potential_analyses()
+        condense_potentials()
+RestOfTheRoster.init()
+
+class Rivalry:
+        
+    def compile_rivals_team(TEAM_LIST):
+        RIVAL_IDS_DICT = {}
+        for ID in TEAM_LIST:
+            url = FPLDatabase.base_url + 'entry/' + str(ID) + '/'
+            r = requests.get(url).json()
+            first_name = r['player_first_name']
+            last_name = r['player_last_name']
+            RIVAL_IDS_DICT[ID] = {'name': str(first_name)+ " " + str(last_name),
+                                  'points': r['summary_overall_points'],
+                                  'rank': r['summary_overall_rank']
+                                  }
+        for IDR in RIVAL_IDS_DICT.keys():
+            url = 'https://fantasy.premierleague.com/api/entry/' + str(IDR) + '/event/' + str(FPLDatabase.LATEST_GW) + '/picks/'
+            r = requests.get(url).json()
+            RIVAL_IDS_DICT[IDR]['team'] = [i['element'] for i in r['picks']]
+        return RIVAL_IDS_DICT
+    
+    @classmethod
+    def rivalry(self,TEAM_LIST):
+        TEAMS_DICT = self.compile_rivals_team(TEAM_LIST)
+        list_of_full15s = []
+        for ID in TEAMS_DICT.keys():
+            list_of_full15s.append(TEAMS_DICT[ID]['team'])
+        similar_ids = list(set.intersection(*map(set,list_of_full15s)))
+        all_ids = list(set.union(*map(set,list_of_full15s)))
+        unique_ids = list(set(all_ids).difference(similar_ids))
+        id_count = {}
+        for ids in list_of_full15s:
+            for ide in ids:
+                if ide not in id_count.keys():
+                    id_count[ide] = 1
+                else:
+                    id_count[ide] += 1
+        return unique_ids,similar_ids,id_count
+        # for idx in similar_ids:
+        #     print(grab_player_name(idx))
+        
+    @classmethod
+    def genius_summary(self):
+        def genius_changes():
+            file = open("genius_team_history.txt", "r")
+            contents = file.read()
+            dictionary = ast.literal_eval(contents)
+            most_recent_gw = list(dictionary.keys())[-1]
+            prev_gw = list(dictionary.keys())[-2]
+            change_dict = {}
+            for team_id in dictionary[most_recent_gw].keys():
+                name = dictionary[most_recent_gw][team_id]['name']
+                t2 = dictionary[most_recent_gw][team_id]['team']
+                try:
+                    t1 = dictionary[prev_gw][team_id]['team']
+                    pre_diff = list(set(t1) - set(t2))
+                    post_diff = list(set(t2) - set(t1))
+                    change_dict[team_id] = {'name':name,
+                                            'out':pre_diff,
+                                            'in':post_diff}
+                except: pass
+            file.close()
+            chng = 0
+            # print(change_dict)
+            for idx in change_dict:
+                name = change_dict[idx]['name']
+                predifs = change_dict[idx]['out']
+                postdifs = change_dict[idx]['in']
+                changes = {}
+                for preid in predifs:
+                    pos = GrabFunctions.grab_player_pos(preid)
+                    if pos not in changes.keys():
+                        changes[pos] = {}
+                    if '0' not in changes[pos].keys():
+                        changes[pos]['0'] = []
+                    changes[pos]['0'].append(preid)
+                for postid in postdifs:
+                    pos = GrabFunctions.grab_player_pos(postid)
+                    if pos not in changes.keys():
+                        changes[pos] = {}
+                    if '1' not in changes[pos].keys():
+                        changes[pos]['1'] = []
+                    changes[pos]['1'].append(postid)
+                if not predifs and not postdifs:
+                    continue
+                else:
+                    chng = 1
+                    print('\n--------------------')
+                    print(f'{name}\n')
+                    for pos in changes.keys():
+                        a = changes[pos]['0']
+                        b = changes[pos]['1']
+                        for i,x in enumerate(a):
+                            b4 = GrabFunctions.grab_player_name(x)
+                            b5 = GrabFunctions.grab_player_name(b[i])
+                            print(f'{b4} ({pos}) -> {b5} ({pos})')
+                    # print(f'\n{name} has made changes')
+            if chng == 0 :
+                print('Managers have made no changes')
+            return
+    
+        def genius_movements(ranged=None):
+            if ranged and ranged != 'full':
+                print('Entry must be empty or \"full\"!')
+                return
+            file = open("genius_team_history.txt", "r")
+            contents = file.read()
+            dictionary = ast.literal_eval(contents)
+            recorded_gws = list(dictionary.keys())
+            change_dict = {}
+            if not ranged:
+                gwrange = range(len(recorded_gws)-1,len(recorded_gws))
+            elif ranged == 'full':
+                gwrange = range(1,len(recorded_gws))
+            # print(gwrange)
+            for gw_identifier in gwrange:
+                for team_id in dictionary[recorded_gws[gw_identifier]].keys():
+                    name = dictionary[recorded_gws[gw_identifier]][team_id]['name']
+                    t2 = dictionary[recorded_gws[gw_identifier]][team_id]['team']
+                    try:
+                        t1 = dictionary[recorded_gws[gw_identifier-1]][team_id]['team']
+                        pre_diff = list(set(t1) - set(t2))
+                        post_diff = list(set(t2) - set(t1))
+                        if team_id not in change_dict.keys():
+                            change_dict[team_id] = {'name':name,
+                                                    'out':[],
+                                                    'in':[]}
+                        change_dict[team_id]['out'] = change_dict[team_id]['out'] + pre_diff
+                        comp1 = [x for x in change_dict[team_id]['out'] if x in change_dict[team_id]['in']]
+                        change_dict[team_id]['in'] = change_dict[team_id]['in'] + post_diff
+                        comp2 = [x for x in change_dict[team_id]['in'] if x in change_dict[team_id]['out']]
+                        if comp1:
+                            change_dict[team_id]['in'] = [x for x in change_dict[team_id]['in'] if x not in comp1]
+                        if comp2:
+                            change_dict[team_id]['out'] = [x for x in change_dict[team_id]['out'] if x not in comp2]
+                    except: pass
+                    # print(change_dict)
+            tally_dict = {'OUT':{},
+                          'IN':{}}
+            entries = len(change_dict.keys())
+            for team_id in change_dict.keys():
+                outs = change_dict[team_id]['out']
+                ins = change_dict[team_id]['in']
+                for o in outs:
+                    if o not in tally_dict['OUT']:
+                        tally_dict['OUT'][o] = 0
+                    tally_dict['OUT'][o] += 1
+                for i in ins:
+                    if i not in tally_dict['IN']:
+                        tally_dict['IN'][i] = 0
+                    tally_dict['IN'][i] += 1
+            outlist = sorted(tally_dict['OUT'].items(), key=lambda x:x[1], reverse=True)
+            # outdict = dict(outlist)
+            inlist = sorted(tally_dict['IN'].items(), key=lambda x:x[1], reverse=True)
+            # indict = dict(inlist)
+            print('\n---------- OUT -----------\n')
+            for a,b in outlist:
+                print(f'{GrabFunctions.grab_player_name(a)} -- {b}/{entries}')
+            print('\n---------- IN -----------\n')
+            for c,d in inlist:
+                print(f'{GrabFunctions.grab_player_name(c)} -- {d}/{entries}')
+            return
+    
+        def genius_matches():
+            fplids = MyTeam.df_fpl['id'].tolist()
+            fplcounter = {}
+            for fplid in fplids:
+                fplcounter[fplid] = 0
+            file = open("genius_team_history.txt", "r")
+            contents = file.read()
+            dictionary = ast.literal_eval(contents)
+            recorded_gws = list(dictionary.keys())
+            gw_identifier = len(recorded_gws)-1
+            # print(gwrange)
+            for team_id in dictionary[recorded_gws[gw_identifier]].keys():
+                genlist = dictionary[recorded_gws[gw_identifier]][team_id]['team']
+                for ids in genlist:
+                    if ids in fplcounter.keys():
+                        fplcounter[ids] += 1
+            print('\n')
+            for key in fplcounter.keys():
+                value = fplcounter[key]
+                entries = len(dictionary[recorded_gws[gw_identifier]].keys())
+                if int(value) == 0:
+                    tier = '\033[33m'
+                elif int(value) >= 7:
+                    tier = '\033[36m'
+                else:
+                    tier = ''
+                print(f'{GrabFunctions.grab_player_name(key)} -- {tier}{value}\033[0m / {entries}')
+            return
+    
+        def genius_numbers():
+            ID_COUNT = self.rivalry(FPLDatabase.GENIUS_IDS)[-1]
+            ID_DICT = {}
+            for i in ID_COUNT:
+                pos = GrabFunctions.grab_player_pos(i)
+                if pos not in ID_DICT.keys():
+                    ID_DICT[pos] = []
+                value = ID_COUNT[i]
+                ID_DICT[pos].append((i,value))
+            outlist = sorted(ID_DICT.items(), key=lambda x:x[1], reverse=True)
+            self.genius_eff_own_dict = {}
+            for line in outlist:
+                print(f'\n-------------{line[0]}------------')
+                for tup in line[1]:
+                    self.genius_eff_own_dict[tup[0]] = tup[1]
+                    name = GrabFunctions.grab_player_name(tup[0])
+                    print(f'{name}: {tup[1]}')
+            return
+        operations = [
+            lambda: genius_changes(),
+            lambda: genius_movements(),
+            lambda: genius_matches(),
+            lambda: genius_numbers(),
+        ]
+        for operation in operations:
+            try:
+                operation()
+            except Exception as e:
+                print(f"Error encountered in 'Rivalry' operation ({operation}): {e}")
+                pass
+
+class PrintStatements:
+    
+    def team_visualizer(team_ids:list):
+        if len(team_ids) != 15:
+            print("Need 15 entries for list!")
+            return
+        team_dict = {}
+        for idx in team_ids:
+            pos = GrabFunctions.grab_player_pos(idx)
+            if pos not in team_dict:
+                team_dict[pos]=[]
+            name = GrabFunctions.grab_player_name(idx)
+            team_dict[pos].append(name)
+        gkps = team_dict['GKP']
+        defs = team_dict['DEF']
+        mids = team_dict['MID']
+        fwds = team_dict['FWD']
+        print(f'\n                   {gkps[0]}   {gkps[1]}\n')
+        print(f'   {defs[0]}   {defs[1]}   {defs[2]}   {defs[3]}   {defs[4]}\n')
+        print(f'   {mids[0]}   {mids[1]}   {mids[2]}   {mids[3]}   {mids[4]}\n')
+        print(f'               {fwds[0]}   {fwds[1]}   {fwds[2]}\n')
+        return team_dict
+    
+    def alert_players_with_blanks_dgws(FPL_15: pd.DataFrame()):
+        teams = list(FPL_15.team.unique())
+        ids = [GrabFunctions.grab_team_id(x) for x in teams]
+        bgws,dgws = FixtureMath.look_for_blanks_and_dgws()
+        bgws_adj = {k: v for k, v in bgws.items() if k > FPLDatabase.LATEST_GW}
+        dgws_adj = {k: v for k, v in dgws.items() if k > FPLDatabase.LATEST_GW}
+        if bgws_adj:
+            print('\n------------- UPCOMING BLANKS -------------')
+            for gw,teams in bgws_adj.items():
+                print(f'>> Gameweek {gw}')
+                matches = [GrabFunctions.grab_team_name(x) for x in ids if x in teams]
+                players = list(FPL_15.loc[FPL_15['team'].isin(matches)]['player'])
+                if len(players) > 4:
+                    print(f"Suggested to remove {len(players)- 4} player(s) in anticipation of blanks:")
+                [print(f' - {player}') for player in players]
+        if dgws_adj:
+            print('\n------------- UPCOMING DGWS -------------')
+            for gw,teams in dgws_adj.items():
+                print(f'>> Gameweek {gw}')
+                matches = [GrabFunctions.grab_team_name(x) for x in ids if x in teams]
+                players = list(FPL_15.loc[FPL_15['team'].isin(matches)]['player'])
+                [print(f' - {player}') for player in players]
+
+class UploadData:
+    @classmethod
+    def init(self):
+        def upload_potentials():
+            file = open("primedata_per_gw.txt", "r")
+            contents = file.read()
+            dictionary = ast.literal_eval(contents)
+            dictionary[FPLDatabase.LATEST_GW] = []
+            dictionary[FPLDatabase.LATEST_GW].append(RestOfTheRoster.df_fpl_potentials['id'].tolist())
+            dictionary[FPLDatabase.LATEST_GW].append(RestOfTheRoster.df_prime_potentials['id'].tolist())
+            with open("primedata_per_gw.txt", 'w') as conv_file:
+                conv_file.write(json.dumps(dictionary))
+            file.close()
+            self.potential_dict = dictionary
+            print('Uploaded primes to external file!')
+
+        def upload_genius_teams():
+            file = open("genius_team_history.txt", "r")
+            contents = file.read()
+            dictionary = ast.literal_eval(contents)
+            dictionary[FPLDatabase.LATEST_GW] = Rivalry.compile_rivals_team(FPLDatabase.GENIUS_IDS)
+            with open("genius_team_history.txt", 'w') as conv_file:
+                conv_file.write(json.dumps(dictionary))
+            file.close()
+            self.genius_dict = dictionary
+            print('Uploaded gen teams to external file!')
+
+        def compile_returns():
+            returns = []
+            for i in self.potential_dict[FPLDatabase.LATEST_GW][1]:
+                returns.append(GrabFunctions.grab_player_hist(i)[-1])
+            larger_elements = [element for element in returns if element > 3]
+            number_of_elements = len(larger_elements)
+            accuracy = number_of_elements / len(returns)
+            file = open("model_accuracy.txt", "r")
+            contents = file.read()
+            dict_acc = ast.literal_eval(contents)
+            dict_acc[FPLDatabase.LATEST_GW] = {}
+            dict_acc[FPLDatabase.LATEST_GW]['instant'] = accuracy*100
+            with open("model_accuracy.txt", 'w') as conv_file:
+                conv_file.write(json.dumps(dict_acc))
+            file.close()
+            print('Uploaded model accuracy to external file!')
+            
+        upload_potentials()
+        upload_genius_teams()
+        compile_returns()
+UploadData.init()
+
+class DataTransformer:
+    
+    @classmethod
+    def init(self):
+        def make_ROTR():
+            ROTR_df = RestOfTheRoster.df_fpl_potentials.iloc[:, 0:8]
+            ids = ROTR_df.id.tolist()
+            df_tot = FPLDatabase.total_summary[FPLDatabase.total_summary['id_player'].isin(ids)]
+            list_cols = df_tot.select_dtypes(include=['object']).columns.tolist()
+            df_filtered = df_tot[list_cols].apply(lambda col: col[col.apply(lambda x: isinstance(x, list))])
+            df_filtered = df_filtered.dropna(axis=1).reset_index(drop=True)
+            df_filtered = pd.merge(ROTR_df, df_filtered, left_index=True, right_index=True, how='inner')
+            self.ROTR_df = df_filtered
+        def make_MT():
+            MT_df = MyTeam.df_fpl.iloc[:, 0:5]
+            ids = MT_df.id.tolist()
+            df_tot = FPLDatabase.total_summary[FPLDatabase.total_summary['id_player'].isin(ids)]
+            list_cols = df_tot.select_dtypes(include=['object']).columns.tolist()
+            df_filtered = df_tot[list_cols].apply(lambda col: col[col.apply(lambda x: isinstance(x, list))])
+            df_filtered = df_filtered.dropna(axis=1).reset_index(drop=True)
+            df_filtered = pd.merge(MT_df, df_filtered, left_index=True, right_index=True, how='inner')
+            self.MT_df = df_filtered
+        def make_ALL():
+            df_tot = FPLDatabase.total_summary.copy()
+            df_filtered = df_tot
+#             list_cols = df_tot.select_dtypes(include=['object']).columns.tolist()
+#             df_filtered = df_tot[list_cols].apply(lambda col: col[col.apply(lambda x: isinstance(x, list))])
+#             df_filtered = df_filtered.dropna(axis=1).reset_index(drop=True)
+#             overlapping_columns = df_tot.columns.intersection(df_filtered.columns).tolist()
+#             df_filtered = pd.merge(df_tot, df_filtered, on=overlapping_columns, how='outer')
+            # df_filtered.rename(columns = {'singular_name_short':'position','web_name':'player'}, inplace = True)
+            self.all_df = df_filtered
+#             print(self.all_df.columns.to_list())
+        make_ROTR()
+        make_MT()
+        make_ALL()    
+        
+    @classmethod
+    def grab_tops(self,returnformat,position,sorter,num_players=None):
+        if not num_players:
+            num_players = 99
+        grouped = self.ROTR_df.groupby('position').apply(lambda x: x.sort_values('position')).reset_index(drop=True)
+        grouped_dict = {group: group_df.sort_values(by=[sorter],ascending=False).head(num_players) for group, group_df in grouped.groupby('position')}
+        if returnformat == 'id':
+            out = grouped_dict[position].id.tolist()
+        elif returnformat == 'player':
+            out = grouped_dict[position].player.tolist()
+        return out
+    
+    @classmethod
+    def grab_fpl15(self,returnformat,position):
+        grouped = self.MT_df.groupby('position').apply(lambda x: x.sort_values('position')).reset_index(drop=True)
+        grouped_dict = {group: group_df for group, group_df in grouped.groupby('position')}
+        if returnformat == 'id':
+            out = grouped_dict[position].id.tolist()
+        elif returnformat == 'player':
+            out = grouped_dict[position].player.tolist()
+        return out
+    
+    @classmethod
+    def sort_df(self,param: str, look_back: int, position = None):
+        df = self.all_df
+        paramlist = df.iloc[:, 7:].columns.tolist()
+        if param not in paramlist:
+            print(f'Needs to be one of {paramlist}')
+            return
+        if position:
+            grouped = df.groupby('position').apply(lambda x: x.sort_values('position')).reset_index(drop=True)
+            grouped_dict = {group: group_df for group, group_df in grouped.groupby('position')}
+            df = grouped_dict[position]
+        df['temp'] = df[param].apply(lambda x: sum(x[-min(len(x), look_back):]) / min(len(x), look_back))
+        df_sorted = df.sort_values('temp', ascending=False)
+        df_sorted.drop('temp', axis=1, inplace=True)
+        return df_sorted
+    
+DataTransformer.init()
