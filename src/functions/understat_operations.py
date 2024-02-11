@@ -1,109 +1,33 @@
 from understatapi import UnderstatClient
 import pandas as pd
-from fuzzywuzzy import fuzz
-from fuzzywuzzy import process
+# from fuzzywuzzy import fuzz
+# from fuzzywuzzy import process
+import numpy as np
+from datetime import datetime
+import statistics
+from prettytable import PrettyTable
 
 class UnderstatProcessing:
-    def __init__(self):
-        #################  MATCHING UDID to FPLID  ############################################
-        #Teams=======================================================================================================================================
-        print('Matching FPL teams to UnderStat teams...')
-        fpl_ids = FPLDatabase.teams['id'].tolist()
-        fpl_names = FPLDatabase.teams['name'].tolist()
-#         self.fpl_short_names = FPLDatabase.teams['short_name'].tolist()
-        self.fpl_nums = list(zip(fpl_ids,fpl_names))
-        with UnderstatClient() as understat:
-            league_szn_team_stats = understat.league(league="EPL").get_team_data(season="2023")
-            understat_nums_unsorted = [(x['id'],x['title']) for x in league_szn_team_stats.values()]
-            self.understat_nums = sorted(understat_nums_unsorted, key=lambda x: x[1])
-        self.team_nums = list(zip(self.fpl_nums,self.understat_nums))
-        #Players======================================================================================================================================
-        print('Matching FPL players to UnderStat players...')
-        league_player_data = understat.league(league="EPL").get_player_data(season="2024")
-        player_data_understat = pd.DataFrame(data=league_player_data)
-        # Assuming you have DataFrame 1 and DataFrame 2 with columns 'Name' and 'ID'
-        df1 = player_data_understat[['id','player_name','team_title']]
-        df2 = FPLDatabase.total_summary[['id_player','first_name','second_name','web_name','name']]
-        # df2['player_name'] = df2['first_name'] + " " + df2['second_name'] 
-        # column_mapping = {'id_player': 'id'}
-        column_mapping = {'id_player': 'id', 'web_name': 'player_name'}
-        df2 = df2.rename(columns=column_mapping)
-        df2['combined_name'] = df2['first_name'] + " " + df2['second_name']
-        # Create a new DataFrame to store the matched IDs
-        matched_df = pd.DataFrame(columns=['ID_understat', 'ID_FPL'])
-        # Iterate over each row in DataFrame 1
-        player_nums = []
-        for index, row in df1.iterrows():
-            #Understat data
-            name_df1 = row['player_name']
-            id_df1 = row['id']
-            team_df1 = row['team_title'].split(",")[-1]
-            #Fpl data
-            try:
-                fpl_team_name = [x[0][1] for x in self.team_nums if x[1][1] == team_df1][0]
-                relevant_fpl_df = df2.loc[df2['name'] == fpl_team_name]
-            except Exception as e:
-                print(team_df1)
-                print(e)
-            # Find the closest match in DataFrame 2
-            closest_match = process.extractOne(name_df1, relevant_fpl_df['combined_name'], scorer=fuzz.ratio)
-#             print(f'{name_df1} {team_df1} {closest_match}')
-            # Assuming a minimum threshold of 80 for matching (adjust as needed)
-            if closest_match[1] >= 40:
-                matched_name_df2 = closest_match[0]
-                matched_index_df2 = df2[df2['combined_name'] == matched_name_df2].index[0]
-                id_df2 = df2.at[matched_index_df2, 'id']
-                matched_df = matched_df.append({'ID_understat': int(id_df1), 'ID_FPL': int(id_df2)}, ignore_index=True)
-                player_nums.append(((id_df2,matched_name_df2),(id_df1,name_df1)))
-            else:
-                print(f'Issues with: {name_df1} {team_df1} {closest_match}')
-#         self.df1=df1
-#         self.df2=df2
-        self.full_players_nums_df=matched_df
-        self.player_nums = player_nums
-        # Print the matched DataFrame
-        print(f'{len(self.full_players_nums_df)} / {len(df1)} players processed...')
-        #============================================================================================================================================
-        #################### BUILDING TEAM DATASETS ##############################################
-        print('Building team stats for season so far...')
-        understat = UnderstatClient()
-        data_team = understat.league(league="EPL").get_team_data(season="2023")
-        new_team_data = {}
-        # Iterate over the teams in the data
-        for team_id, team_data in data_team.items():
-            # Copy the team's data to the new_data dictionary
-            new_team_data[team_id] = team_data.copy()
-            # Initialize a dictionary to hold the lists of values for the 'history' key
-            new_history = {}
-            # Iterate over the dictionaries in the 'history' list
-            for game in team_data['history']:
-                # Iterate over the keys and values in each dictionary
-                for key, value in game.items():
-                    # If the key is not already in the new_history dictionary, add it with an empty list as the value
-                    if key not in new_history:
-                        new_history[key] = []
-                    # Append the value to the list for this key
-                    new_history[key].append(value)
-            # Replace the 'history' key in the new_data dictionary with the new_history dictionary
-            new_team_data[team_id]['history'] = new_history
-        self.new_team_data = new_team_data
-        
-    def grab_player_USID_from_FPLID(self, FPL_ID):
-        return int([x[1][0] for x in self.player_nums if str(x[0][0]) == str(FPL_ID)][0])
-        
-    def grab_team_USID_from_FPLID(self, FPL_ID):
-        return int([x[1][0] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0])
-        
-    def grab_team_USname_from_FPLID(self, FPL_ID):
-        return [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
     
-    #################################### TEAM FUNCTIONS ##############################################
-    
+    metric_thresholds = {
+        'ict': (3.5, 5.0, 7.5),
+        'xGI': (0.2, 0.5, 0.9),
+        'history': (4.0, 6.0, 9.0),
+        'bps': (14.0, 21.0, 29.0),
+        'xGC': (1.5,1.0,0.5),
+    }
+
+    def __init__(self, api_parser, data_analytics, fpl_helper_fns, und_helper_fns):
+        self.api_parser = api_parser
+        self.data_analytics = data_analytics
+        self.und_helper_fns = und_helper_fns
+        self.fpl_helper_fns = fpl_helper_fns
+        
     def fetch_team_xg_stats(self,FPL_ID):
         """
         Function returns xG of a specified team against all teams so far. Use fetch team all stats for expanded view
         """
-        team_name = [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
+        team_name = [x[1][1] for x in self.und_helper_fns.team_nums if str(x[0][0]) == str(FPL_ID)][0]
         formatted_team_name = team_name.replace(" ", "_")
         with UnderstatClient() as understat:
             team_match_data = understat.team(team=formatted_team_name).get_match_data(season="2023")
@@ -125,7 +49,7 @@ class UnderstatProcessing:
         Function returns all values for all games of this season
         """
         rows = []
-        for team_id, team_data in new_team_data.items():
+        for _, team_data in self.und_helper_fns.new_team_data.items():
             row = team_data['history'].copy()  # Copy the history data
             row['id'] = team_data['id']  # Add the team id
             row['title'] = team_data['title']  # Add the team title
@@ -140,7 +64,7 @@ class UnderstatProcessing:
         teams and assess weaknesses based on general PPDA and specific PPDA.
         """
         rows1,rows2 = [],[]
-        for team_id, team_data in new_team_data.items():
+        for _, team_data in self.und_helper_fns.new_team_data.items():
             row1 = {'id': team_data['id'], 'title': team_data['title']}  # Initialize the row with the team id and title
             row2 = {'id': team_data['id'], 'title': team_data['title']}  # Initialize the row with the team id and title
             for key, values in team_data['history'].items():
@@ -174,40 +98,31 @@ class UnderstatProcessing:
     
     def fetch_player_shot_data(self, FPL_ID):
         understat = UnderstatClient()
-        player_shot_data = understat.player(player=str(self.grab_player_USID_from_FPLID(FPL_ID))).get_shot_data()
+        player_shot_data = understat.player(player=str(self.und_helper_fns.grab_player_USID_from_FPLID(FPL_ID))).get_shot_data()
         df = pd.DataFrame(data=player_shot_data)
-        parsed_time = datetime.fromisoformat(FPLDatabase.SZN_START_TIME[:-1])
+        season_start_time = [x['deadline_time'] for x in self.api_parser.raw_data['events']][0]
+        parsed_time = datetime.fromisoformat(season_start_time[:-1])
         formatted_string = parsed_time.strftime("%Y-%m-%d")
         date_string = formatted_string
         date_format = "%Y-%m-%d"
         df["date"] = pd.to_datetime(df["date"])
         df = df.loc[df['date']>=datetime.strptime(date_string, date_format)]
-        # Group by 'round' (colY) and count 'hit' or 'miss' occurrences (colX)
         grouped = df.groupby(['result', 'match_id','h_team','a_team']).size().reset_index(name='count')
-        # Pivot the grouped DataFrame to have 'hit' and 'miss' counts per round
         chance_summary = grouped.pivot_table(index=['match_id','h_team','a_team'], columns='result', values='count', fill_value=0)
-        # Reset the index and rename the columns
         chance_summary.reset_index(inplace=True)
         chance_summary.columns.name = None
-        # result.rename(columns={'colY': 'round', 'hit': 'number_hits', 'miss': 'number_misses'}, inplace=True)
-        # Add a new column that sums the 'left_hits' and 'right_hits' columns
-        # result['shots'] = result['left_hits'] + result['right_hits']
         chance_summary['Total Shots']  = chance_summary.drop(['match_id','h_team','a_team'], axis=1).sum(axis=1)
         
-        # Filter DataFrame to only include rows with 'hit'
         hits_df = df[df["result"] == "Goal"]
-        # Group by 'round' (colY) and count 'hit' or 'miss' occurrences (colX)
         grouped = hits_df.groupby(['shotType', 'match_id','h_team','a_team']).size().reset_index(name='count')
-        # Pivot the grouped DataFrame to have 'hit' and 'miss' counts per round
         goal_summary = grouped.pivot_table(index=['match_id','h_team','a_team'], columns='shotType', values='count', fill_value=0)
-        # Reset the index and rename the columns
         goal_summary.reset_index(inplace=True)
         goal_summary.columns.name = None
         return chance_summary, goal_summary
     
     def fetch_player_shots_against_teams(self, FPL_ID, TEAM_AGAINST_ID):
         understat = UnderstatClient()
-        player_shot_data = understat.player(player=str(self.grab_player_USID_from_FPLID(FPL_ID))).get_shot_data()
+        player_shot_data = understat.player(player=str(self.und_helper_fns.grab_player_USID_from_FPLID(FPL_ID))).get_shot_data()
         df = pd.DataFrame(data=player_shot_data)
         team_dict = {}
         for index, row in df.iterrows():
@@ -238,21 +153,16 @@ class UnderstatProcessing:
                 if result == 'Goal':
                     team_dict[team]['a'] += 1
 
-        # Create dataframe from team dictionary
         output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
         output_df.columns = ['Team', 'h', 'a', 'full_summary']
         def order_season_by_year(season):
             return {year: season[year] for year in sorted(season.keys())}
         output_df['full_summary'] = output_df['full_summary'].apply(order_season_by_year)
         output_df = output_df.sort_values(by=['Team']).reset_index(drop=True)
-        #Tally up against a team
         spreaded_stats = {}
-        for szn,data in output_df.loc[output_df['Team'] == self.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]['full_summary'].iloc[0].items():
-#             print(f'{szn}---> {data}')
+        for szn,data in output_df.loc[output_df['Team'] == self.und_helper_fns.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]['full_summary'].iloc[0].items():
             spreaded_stats[szn]={}
             for h_a, shotdata in data.items():
-#                 print(h_a)
-        #         print(shotdata)
                 tally = {}
                 for foot, datalist in shotdata.items():
                     tally[foot] = {'goals':[], 'misses':[]}
@@ -266,30 +176,20 @@ class UnderstatProcessing:
     
     def fetch_player_stats_against_teams(self, FPL_ID, TEAM_AGAINST_ID):
         understat = UnderstatClient()
-        player_match_data = understat.player(player=str(self.grab_player_USID_from_FPLID(FPL_ID))).get_match_data()
+        player_match_data = understat.player(player=str(self.und_helper_fns.grab_player_USID_from_FPLID(FPL_ID))).get_match_data()
         player_match_df = pd.DataFrame(data=player_match_data)
         player_match_df['h_a'] = ''
-        player_team = self.grab_team_USname_from_FPLID(GrabFunctions.grab_player_team_id(FPL_ID))
-        # Iterate over each row in df2
+        player_team = self.und_helper_fns.grab_team_USname_from_FPLID(self.fpl_helper_fns.grab_player_team_id(FPL_ID))
         for index, row in player_match_df.iterrows():
             season = row['season']
-        #     team = ''
-
-        #     # Find the corresponding team in df1 based on the season
-        #     team_match = szn_df[szn_df['season'] == season]
-
-        #     if not team_match.empty:
-        #         team = team_match['team'].values[0]
             team = player_team
 
-            # Check if the team is in 'h_team' or 'a_team' and update 'h_a' accordingly
             if team in row['h_team']:
                 player_match_df.at[index, 'h_a'] = 'h'
             elif team in row['a_team']:
                 player_match_df.at[index, 'h_a'] = 'a'
             else:
                 player_match_df.at[index, 'h_a'] = 'NA'
-#         print(player_match_df)
         team_dict = {}
 
         for index, row in player_match_df.iterrows():
@@ -331,7 +231,6 @@ class UnderstatProcessing:
                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
                 if season not in team_dict[team]['seasons']:
                     team_dict[team]['seasons'][season] = {'h': 0, 'a': 0}
-#         print(team_dict)
 
         def calculate_coefficient_of_variation(goals, h_a):
             h_goals = [data['h'] for data in goals.values()]
@@ -368,7 +267,6 @@ class UnderstatProcessing:
             avg_goals = (sum(h_goals) + sum(a_goals)) / (2*len(goals))
             return avg_goals
 
-        # Create dataframe from team dictionary
         output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
         output_df.columns = ['Team', 'h', 'a', 'season']
 
@@ -391,9 +289,187 @@ class UnderstatProcessing:
         output_df.sort_values(by=['Team']).reset_index(drop=True)
         output_df.sort_values(by=['Variation Coefficient (Total)'])
         
-        output_df = output_df.loc[output_df['Team'] == self.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]
+        output_df = output_df.loc[output_df['Team'] == self.und_helper_fns.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]
         
         return output_df.to_dict()
     
-# Instantiate an object of the FPLDatabase class
-UnderstatAnalysis = UnderstatProcessing()
+    #################################### PLAYER RATINGS ASSESSMENT ##############################################
+        
+    def _calculate_rating(self, metric_values: list, metric_name: str, top_n_gws: int = None):
+        look_back_averager = 6
+
+        min_thr_rating, avg_thr_rating, high_thr_rating = 6.0, 7.5, 9.0
+
+        # Get the thresholds for the given metric_name
+        min_thr, avg_thr, high_thr = self.metric_thresholds.get(metric_name, (0.0, 0.0, 0.0))
+
+        all_ratings = []
+        for metric_value in metric_values[-look_back_averager:]:
+            # Ensure the metric value is not below 0
+            metric_value = max(metric_value, 0)
+
+            # Calculate rating based on the metric value and the metric name
+            if metric_value <= min_thr:
+                rating = (metric_value / min_thr) * min_thr_rating
+            elif metric_value <= avg_thr:
+                rating = min_thr_rating + ((metric_value - min_thr) / (avg_thr - min_thr)) * 1.5
+            elif metric_value <= high_thr:
+                rating = avg_thr_rating + ((metric_value - avg_thr) / (high_thr - avg_thr)) * 1.5
+            else:
+                # Metric value is above high threshold, interpolate to excellent (10), capped at 10
+                if metric_value <= (2 * high_thr):
+                    rating = high_thr_rating + ((metric_value - high_thr) / (2 * high_thr - high_thr)) * 1.0
+                else:
+                    rating = 10.0
+
+            all_ratings.append(rating)
+        if top_n_gws == None:
+            return np.mean(all_ratings)
+        elif type(top_n_gws) == int:
+            sorted_ratings = sorted(all_ratings, reverse=True)
+            return np.mean(sorted_ratings[:top_n_gws])
+        
+    def _calculate_player_form_rating(self, player_dict: dict, top_n_gws: int = None):
+        positional_metric_weightings = {
+            'FWD': {'history': 0.55, 'ict': 0.1, 'xGI': 0.25, 'bps': 0.1},
+            'MID': {'history': 0.55, 'ict': 0.1, 'xGI': 0.25, 'bps': 0.1},
+            'DEF': {'history': 0.6, 'ict': 0.1, 'xGI': 0.1, 'xGC': 0.1, 'bps': 0.1},
+            'GKP': {'history': 0.6, 'ict': 0.1, 'xGC': 0.2, 'bps': 0.1},
+        }
+        metric_weightings = positional_metric_weightings.get(player_dict['position'])
+        metric_ratings = {}
+        for param_name in [x for x in metric_weightings.keys() if x in ['history', 'ict', 'xGI', 'xGC', 'bps']]:
+            rating = self._calculate_rating(player_dict[param_name][1], param_name, top_n_gws)
+            metric_ratings[param_name] = rating
+        total_weighting = sum(metric_weightings.values())
+        normalized_weightings = {metric: weight / total_weighting for metric, weight in metric_weightings.items()}
+        overall_rating = sum(metric_ratings[metric] * normalized_weightings[metric] for metric in metric_ratings)
+
+        return overall_rating
+    
+    def get_player_form_rating(self, values: list, top_n_gws: int = None):
+        players = [x for x in self.data_analytics.players if x['id'] in values]
+        seq_map = {'GKP':0, 'DEF':1, 'MID':2, 'FWD':3}
+        sorted_players = sorted(players, key=lambda x: (seq_map[x['position']], -x['history'][0]))
+        rating_summary = {}
+        for plyr_dict in sorted_players:
+            if plyr_dict['position'] in ['MID', 'FWD','DEF']:
+                overall_rating = self._calculate_player_form_rating(plyr_dict, top_n_gws)
+                rating_summary[plyr_dict['id']] = overall_rating
+        sorted_items = sorted(rating_summary.items(), key=lambda item: item[1], reverse=True)
+        return sorted_items
+    
+    def calculate_team_rating(self, player_id):
+        team_id_fpl = self.fpl_helper_fns.grab_player_team_id(player_id)
+        team_id = self.und_helper_fns.grab_team_USID_from_FPLID(team_id_fpl)
+        team_info = self.und_helper_fns.new_team_data.get(str(team_id))
+
+        # Weighing factors for the rating
+        weights = {
+            'wins': 3,
+            'draws': 1,
+            'loses': -3,
+            'xG': 2,
+            'xGA': -2,
+            'pts': 2,
+            'npxGD': 2
+        }
+
+        # Calculate the weighted sum for each factor
+        weighted_sum = sum(weights[key] * sum(team_info['history'][key]) for key in weights)
+
+        # Normalize the weighted sum to get the rating in the range of 1 to 10
+        min_weighted_sum = min(weights.values()) * sum(len(team_info['history'][key]) for key in weights)
+        max_weighted_sum = max(weights.values()) * sum(len(team_info['history'][key]) for key in weights)
+        normalized_rating = ((weighted_sum - min_weighted_sum) / (max_weighted_sum - min_weighted_sum)) * 9 + 1
+
+        # Ensure the rating is within the valid range of 1 to 10
+        rating = max(1, min(normalized_rating, 10))
+
+        return rating
+    
+    def calculate_upcoming_FDR_rating(self, player_id):
+        upcoming_fixture_list = self.fpl_helper_fns.grab_player_fixtures('fwd', self.fpl_helper_fns.grab_player_team_id(player_id),4)
+        home_away_info = [x[1][0][2] for x in upcoming_fixture_list if len(x[1]) >= 1]
+        difficulty_ratings = [x[1][0][3] for x in upcoming_fixture_list if len(x[1]) >= 1]
+        # Weighing factors for the rating
+        difficulty_weights = {1: 4.5, 2: 4, 3: 3, 4: 1.5, 5: 0.5}  # Higher difficulty means a tougher match
+        home_weight = 1.2  # Weight for home games
+
+        # Calculate the weighted sum of difficulty ratings based on home/away
+        weighted_sum = sum(difficulty_weights[rating] * (home_weight if location == 'H' else 1)
+                           for rating, location in zip(difficulty_ratings, home_away_info))
+        # Calculate the average weighted difficulty rating
+        average_weighted_difficulty = weighted_sum / len(difficulty_ratings)
+
+        # Normalize the average weighted difficulty to get the rating in the range of 1 to 10
+        min_weighted_difficulty = min(difficulty_weights.values())
+        max_weighted_difficulty = max(difficulty_weights.values())
+        normalized_rating = ((average_weighted_difficulty - min_weighted_difficulty)
+                             / (max_weighted_difficulty - min_weighted_difficulty)) * 9 + 1
+
+        # Ensure the rating is within the valid range of 1 to 10
+        rating = max(1, min(normalized_rating, 10))
+        return rating
+
+    def calculate_total_player_rating(self, PLAYER_ID,  top_n_gws = None, output_all = False):
+        player_rating = self.get_player_form_rating([PLAYER_ID],top_n_gws)[0][1]
+        team_rating = self.calculate_team_rating(PLAYER_ID)
+        FDR_rating = self.calculate_upcoming_FDR_rating(PLAYER_ID)
+
+        weights = [0.45,0.35,0.2]
+        metric_ratings = [player_rating, team_rating, FDR_rating]
+
+        # Calculate the weighted sum of metric ratings
+        weighted_sum = sum(metric * weight for metric, weight in zip(metric_ratings, weights))
+
+        # Normalize the weighted sum to get the overall rating
+        overall_rating = weighted_sum
+        if output_all:
+            return metric_ratings, overall_rating
+        else:
+            return overall_rating
+        
+ #======================================== UNDERSTAT OPS ========================================
+
+    def tabulate_ratings_table(self, rating_thresh = 5):
+        positions_short = ['DEF','MID','FWD']
+        values = [x['id'] for x in self.data_analytics.players if x['position'] != 'GKP' and x['position'] in positions_short]
+        rating_summary = []
+        for value in values:
+            try:
+                other_ratings, rating = self.calculate_total_player_rating(value, top_n_gws=4, output_all = True)
+            except Exception as e:
+                print(f'{value}: {e}')
+                pass
+            rating_summary.append((value, self.fpl_helper_fnshelper_fns.grab_player_name(value), rating, other_ratings))
+
+        data = rating_summary
+
+        min_rating = max(int(min(rating for _, _, rating, _ in data)), rating_thresh)
+        max_rating = int(max(rating for _, _, rating, _ in data))
+        intervals = [(i, i+1) for i in range(min_rating, max_rating + 1)]
+
+        grouped_data = []
+        for idx, name, rating, other_ratings in data:
+            int_rating = int(rating)  # Convert float rating to integer
+            for interval in intervals:
+                if interval[0] <= int_rating < interval[1]:
+                    grouped_data.append({
+                        'Interval': f'{interval[0]}-{interval[1]}',
+                        'FPL_ID': idx,
+                        'Name': name,
+                        'Total Rating': round(rating,1),
+                        'Player Form': round(other_ratings[0],3),
+                        'Team Form': round(other_ratings[1],3),
+                        'FDR Score': round(other_ratings[2],3)
+                    })
+                    break
+
+        df = pd.DataFrame(grouped_data)
+        df.sort_values(['Interval', 'Total Rating'], ascending=[False, False], inplace=True)
+        df = df.reset_index(drop=True)
+        x = PrettyTable(df.columns.tolist())
+        for row in df.itertuples(index=False):
+            x.add_row(row)
+        return x

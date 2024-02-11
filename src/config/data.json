@@ -1,23 +1,7 @@
-{   "active_season": "2023/24",
-    "season": {
-        "2023/24": {
-            "genius_ids": [
-                {"id": 4305040, "name": "Fabio Borges"},
-                {"id": 5977880, "name": "Magnus Carlsen", "team": "KJUM Tjuvholmen"},
-                {"id": 15709, "name": "Finn Solie", "team": "Finncastle"},
-                {"id": 14165, "name": "Tom Stephenson", "team": "Badgers9"},
-                {"id": 2905, "name": "Mark Mansfield", "team": "Schmohawks"},
-                {"id": 7632, "name": "Ben Crellin", "team": "N/A"},
-                {"id": 157354, "name": "Matt Corbidge", "team": "Yeezy Taught Me"},
-                {"id": 3352, "name": "Dan Bennett", "team": "Bend it like Bennett"},
-                {"id": 839, "name": "Daniel Barfield", "team": "N/A"},
-                {"id": 6312, "name": "FPL_Harry", "team": "Harry Daniels"}
-            ],
-            "personal_team_id": 119615,
-            "rival_league_ids":  [
-                {"id": 782655, "name": "Just Quiet & Regular"},
-                {"id": 467038, "name": "Greatest Show on Paper"}
-            ]
-        }
+{   
+    "fpl_id_data": {
+        "beacon_team_ids": [4305040, 5977880, 15709, 14165, 2905, 7632, 157354, 3352, 839, 6312],
+        "personal_team_id": 119615,
+        "personal_league_ids":  [782655, 467038]
     }   
 }
