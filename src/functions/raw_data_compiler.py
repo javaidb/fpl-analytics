@@ -142,7 +142,7 @@ class RawDataCompiler:
         asyncio.run(compile_summary())
         total_summary.rename(columns = {'singular_name_short':'position'}, inplace = True)
         if not total_summary.empty:
-            total_summary.to_csv('total_summary.csv', index=False)
+            total_summary.to_csv('../../stats/total_summary.csv', index=False)
             print('Exported total_summary!')
         return total_summary
     
