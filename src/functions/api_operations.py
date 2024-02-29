@@ -25,6 +25,7 @@ class FPLAPIParser:
     def __init__(self):
         self.base_url = config.BASE_URL
         self.raw_data = self.fetch_data_from_api('bootstrap-static/')
+        self.player_ids = [x['id'] for x in self.raw_data['elements']]
         self.raw_element_summary = {}
         self.config_data = self.get_config_data()
         self.latest_gw = self.get_latest_gameweek()
@@ -33,6 +34,7 @@ class FPLAPIParser:
         self.fixtures = self.fetch_fixtures()
         self.blanks, self.dgws = self.look_for_blanks_and_dgws()
         self.rival_stats = self.tabulate_rival_stats(self.get_beacon_ids())
+        self.full_element_summary = asyncio.run(self.compile_master_element_summary())
 
     def fetch_data_from_api(self, endpoint):
         url = f'{self.base_url}{endpoint}'
@@ -137,7 +139,29 @@ class FPLAPIParser:
             player_data = self.fetch_data_from_api(f'element-summary/{player_id}/')
         self.raw_element_summary[player_id] = player_data
         return player_data
+    
+    async def fetch_gameweek_player_data(self, player_id, session):
+        if player_id in self.raw_element_summary:
+            return self.raw_element_summary[player_id]
 
+        player_data = await self.fetch_element_summaries(player_id, session)
+        return player_data
+    
+    async def compile_master_element_summary(self):
+        full_element_summary = {}
+        async def fetch_all_summaries():
+            async with aiohttp.ClientSession() as session:
+                tasks = [self.fetch_gameweek_player_data(player_id,session) for player_id in sorted(self.player_ids)]
+                gameweek_histories = await asyncio.gather(*tasks)
+            for player_num, player_id in enumerate(tqdm_notebook(sorted(self.player_ids), desc="Building element summaries")):
+                try:
+                    player_data = gameweek_histories[player_num]
+                    full_element_summary[player_id] = player_data
+                except Exception as e:
+                    print(f"Error with element summary building for ID {player_id}: {e}")
+        asyncio.run(fetch_all_summaries())
+        return full_element_summary
+    
 ##########################################################################################################################
 
     def compile_rivals_team(self, team_ids: list):
