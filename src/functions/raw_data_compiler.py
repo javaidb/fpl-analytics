@@ -1,7 +1,8 @@
 # from src.config import config
 import pandas as pd
 from tqdm.notebook import tqdm_notebook
-from src.functions.helper_fns import *
+from src.functions.helper_fns import calculate_mean_std_dev
+from collections import defaultdict
 
 import asyncio
 import aiohttp
@@ -12,6 +13,7 @@ class RawDataCompiler:
     def __init__(self, api_parser):
         self.api_parser = api_parser
         self.raw_data = api_parser.raw_data
+        self.master_summary = self.build_master_summary()
         self.total_summary = None
         self.players = pd.json_normalize(self.raw_data['elements'])
         self.teams = pd.json_normalize(self.raw_data['teams'])
@@ -25,17 +27,70 @@ class RawDataCompiler:
         list_of_dicts = [x for x in teamdata]
         return pd.DataFrame.from_records(list_of_dicts)
 
-    async def fetch(session, url):
-        async with session.get(url) as response:
-            return await response.json()
+#======================================= BUILD MASTER SUMMARY ====================================================
+    
+    def grab_full_history(self):
+        raw_data = self.api_parser.full_element_summary
+        return [gw_data for player_id in sorted(self.api_parser.player_ids) for gw_data in raw_data[player_id]['history']]
+
+    def build_master_summary(self):
+        print("Building master summary...")
+        id_values = sorted(self.api_parser.player_ids)
+        elem_summaries = self.grab_full_history()
+        rel_elem_summaries = [x for x in elem_summaries if x['element'] in id_values]
+        rel_elem_summaries = sorted(rel_elem_summaries, key=lambda x: x['round'])
+
+        consolidated_dict = defaultdict(lambda: defaultdict(list))
+        
+        #Compile from element summaries
+        is_numeric = lambda s: s.replace('.', '', 1).isdigit() if isinstance(s, str) else isinstance(s, (int, float))
+        for entry in rel_elem_summaries:
+            player_id = entry['element']
+            round_num = entry['round']
+            entry_data = {k: v for k, v in entry.items() if k not in ['element', 'round']}
+            for key, value in entry_data.items():
+                if is_numeric(value):
+                    value = round(float(value),1)
+                consolidated_dict[player_id][key].append(( round_num, value ))
+            consolidated_dict[player_id]['round'].append(round_num)
+            
+        #Add additional info from bootstrap raw data
+        bootstrap_dict = self.api_parser.raw_data['elements']
+        for player_id in consolidated_dict.keys():
+            for raw_data_col in ['team', 'element_type', 'first_name', 'second_name', 'web_name']:
+                raw_data_val = next((x[raw_data_col] for x in iter(bootstrap_dict) if x['id'] == player_id))
+                consolidated_dict[player_id][raw_data_col] = raw_data_val
+        
+        #Add additional info from teams
+        bootstrap_teams = self.api_parser.raw_data['teams']
+        for player_id, player_data in consolidated_dict.items():
+            team_id = player_data["team"]
+            for raw_data_col in ['short_name', 'name', 'strength_overall_home', 'strength_overall_away', 'strength_attack_home', 'strength_attack_away', 'strength_defence_home', 'strength_defence_away']:
+                raw_data_val = next((x[raw_data_col] for x in iter(bootstrap_teams) if x['id'] == team_id))
+                consolidated_dict[player_id][f'team_{raw_data_col}'] = raw_data_val
+        
+        #Add additional info from positions
+        bootstrap_pos = self.api_parser.raw_data['element_types']
+        for player_id, player_data in consolidated_dict.items():
+            pos_id = player_data["element_type"]
+            for raw_data_col in ['singular_name_short']:
+                raw_data_val = next((x[raw_data_col] for x in iter(bootstrap_pos) if x['id'] == pos_id))
+                consolidated_dict[player_id][f'pos_{raw_data_col}'] = raw_data_val
+
+        return {player_id: dict(data) for player_id, data in consolidated_dict.items()}
+
+######################################################################################################################
+    # async def fetch(session, url):
+    #     async with session.get(url) as response:
+    #         return await response.json()
 
     async def fetch_gameweek_history(self, player_id, session):
         if player_id in self.api_parser.raw_element_summary:
-            player_history = pd.DataFrame(self.api_parser.raw_element_summary[player_id]['history'])
+            player_history = self.api_parser.raw_element_summary[player_id]['history']
             return player_history
 
         player_data = await self.api_parser.fetch_element_summaries(player_id, session)
-        player_history = pd.DataFrame(player_data['history'])
+        player_history = player_data['history']
         return player_history
 
     async def compile_dataframes(self):
@@ -63,7 +118,7 @@ class RawDataCompiler:
         return total_summary
 
     def compile_total_df(self, points):
-        self.total_points_df = pd.concat(points)
+        self.total_points_df = pd.concat([pd.DataFrame(x) for x in points])
         self.points = self.players[['id_player', 'web_name','singular_name_short']].merge(
             self.total_points_df,
             left_on='id_player',
@@ -85,7 +140,7 @@ class RawDataCompiler:
 
         async def compile_summary():
             async with aiohttp.ClientSession() as session:
-                tasks = [self.fetch_gameweek_history(player_id,session) for player_id in total_summary['id_player']]
+                tasks = [self.fetch_gameweek_history(x['id'],session) for x in self.api_parser.raw_data['elements']]
                 gameweek_histories = await asyncio.gather(*tasks)
 
             def process_binary_returns(dfx):
@@ -99,17 +154,23 @@ class RawDataCompiler:
             def calc_rolling_avg(lookback: int, dfx: pd.DataFrame):
                 return sum(dfx[-lookback:]) / len(dfx[-lookback:])
 
+            self.master_summary_temp = []
             for num, idx in enumerate(tqdm_notebook(total_summary['id_player'], desc="Building master dataframe")):
                 try:
-                    dfx = gameweek_histories[num]
-                    existing_cols = dfx.columns.tolist()
+                    player_data_history = gameweek_histories[num]
+                    for player_gw_data in player_data_history:
+                        self.master_summary_temp.append(player_gw_data)
+                    
+                    player_data_df = pd.DataFrame(data=player_data_history).copy()
+                    existing_cols = player_data_df.columns.tolist()
+
                     for param in existing_cols[1:]:
                         p1, p2 = param, param
                         if param == 'total_points':
                             p1 = 'history'
                         elif param == 'value':
                             p1 = 'changing_value'
-                        ref_list = dfx[p2].tolist()
+                        ref_list = player_data_df[p2].tolist()
                         converted_ref_list = []
                         for elem in ref_list:
                             try:
@@ -117,13 +178,13 @@ class RawDataCompiler:
                             except:
                                 converted_ref_list.append(elem)
                         total_summary.at[[num],p1] = pd.Series([converted_ref_list],index = [num])
-                    returnhist = process_binary_returns(dfx)
+                    returnhist = process_binary_returns(player_data_df)
 
-                    mean_og, stdev_og = calculate_mean_std_dev(dfx['total_points'])
+                    mean_og, stdev_og = calculate_mean_std_dev(player_data_df['total_points'])
                     mean_x, stdev_x = calculate_mean_std_dev(returnhist)
                     last6_mean_x, last3_mean_x, last2_mean_x = calc_rolling_avg(6,returnhist), calc_rolling_avg(3,returnhist), calc_rolling_avg(2,returnhist)
 
-                    fulltime_count, fullhour_count, total_minutes = process_fulltime_fullhour(dfx)
+                    fulltime_count, fullhour_count, total_minutes = process_fulltime_fullhour(player_data_df)
                     total_summary.at[num,'value'] = self.points.loc[self.points['id_player'] == idx]['value'].iloc[-1] / 10
                     total_summary.at[num, 'fulltime'] = f"{fulltime_count}/{total_minutes}"
                     total_summary.at[num, 'fullhour'] = f"{fullhour_count}/{total_minutes}"
@@ -145,7 +206,7 @@ class RawDataCompiler:
             total_summary.to_csv('../../stats/total_summary.csv', index=False)
             print('Exported total_summary!')
         return total_summary
-    
+######################################################################################################################    
     
     def initialize_effective_ownership(self):    
         rival_league_ids = [x for x in self.api_parser.get_league_ids()]
