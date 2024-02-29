@@ -5,6 +5,7 @@ import difflib
 import pandas as pd
 import ast
 import os
+from collections import defaultdict
 from understatapi import UnderstatClient
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
@@ -22,87 +23,106 @@ class GeneralHelperFns:
         self.api_parser = api_parser
         self.fdr_data = self.compile_fdr_data()
 
+    
+    def compile_player_data(self, id_values: list):
+        return {k:v for k,v in self.data_parser.master_summary.items() if k in id_values}
+
+    def slice_player_data(self, compiled_player_data: dict, look_back: int):
+
+        sliced_player_data = []
+        for player_id, player_data in compiled_player_data.items():
+            temp_dict = defaultdict(lambda: defaultdict(list))
+            temp_dict['id'] = player_id
+            for k,v in player_data.items():
+                if isinstance(v, list):
+                    if all(isinstance(item, (tuple)) for item in v):
+                        v = [x[1] for x in v]
+                    temp_dict[k] = v[-1*abs(look_back):]
+                else:
+                    temp_dict[k] = v
+            sliced_player_data.append({k: v for k,v in temp_dict.items()})
+
+        return sliced_player_data
+    
+    # def grab_upcoming_fixtures(self, id_values: list):
+    #     raw_data = self.api_parser.full_element_summary
+    #     return {player_id: gw_data for player_id in sorted(self.api_parser.player_ids) for gw_data in raw_data[player_id]['fixtures']}
+
+
     #========================== General Parsing ==========================
 
-    def grab_player_name(self,idx):
-        name = self.data_parser.points.loc[self.data_parser.points['id_player'] == idx]['player']
-        return name.values[-1]
+    def grab_player_name(self, idx):
+        return self.compile_player_data([idx])[idx]['web_name']
 
-    def grab_player_value(self,idx):
-        name = self.data_parser.points.loc[self.data_parser.points['id_player'] == idx]['value'] / 10
-        return name.values[-1]
+    def grab_player_value(self, idx):
+        return self.compile_player_data([idx])[idx]['value'][-1][-1]/10
 
-    def grab_player_pos(self,idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['position']
-        return name.values[-1]
+    def grab_player_pos(self, idx):
+        return self.compile_player_data([idx])[idx]['pos_singular_name_short']
      
-    def grab_player_team(self,idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['name']
-        return name.values[-1]
+    def grab_player_team(self, idx):
+        return self.compile_player_data([idx])[idx]['team_short_name']
      
-    def grab_player_team_id(self,idx):
-        team_name = self.grab_player_team(idx)
-        name = self.data_parser.team_info.loc[self.data_parser.team_info['name'] == team_name]['id']
-        return name.values[-1]
+    def grab_player_team_id(self, idx):
+        return self.compile_player_data([idx])[idx]['team']
      
-    def grab_player_hist(self,idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['history']
-        return name.values[-1]
+    def grab_player_hist(self, idx, include_gws=False):
+        return [param_val if not include_gws else (gw, param_val) for gw, param_val in self.compile_player_data([idx])[idx]['total_points']]
      
-    def grab_player_returns(self,idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['returnhist']
-        return name.values[-1]
+    def grab_player_returns(self, idx, include_gws=False):
+        def process_binary_returns(points_tup):
+            return (points_tup[0], 2) if (points_tup[1] > 9) else (points_tup[0], 1) if (points_tup[1] > 3 and points_tup[1] <= 9) else (points_tup[0], 0)
+        return [process_binary_returns(param_val) if not include_gws else (gw, process_binary_returns(param_val)) for gw, param_val in self.compile_player_data([idx])[idx]['total_points']]
      
-    def grab_player_minutes(self,idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['minutes']
-        return name.values[-1]
+    def grab_player_minutes(self, idx, include_gws=False):
+        return [param_val if not include_gws else (gw, param_val) for gw, param_val in self.compile_player_data([idx])[idx]['minutes']]
      
-    def grab_player_bps(self,idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['bps']
-        return name.values[-1]
+    def grab_player_bps(self, idx, include_gws=False):
+        return [param_val if not include_gws else (gw, param_val) for gw, param_val in self.compile_player_data([idx])[idx]['bps']]
      
-    def grab_player_full90s(self,idx):
+    def grab_player_full90s(self, idx):
         name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fulltime']
         return name.values[-1]
 
-    def grab_player_full60s(self,idx):
+    def grab_player_full60s(self, idx):
         name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fullhour']
         return name.values[-1]
 
-    def grab_team_id(self,team_name):
-        idt = self.data_parser.team_info.loc[self.data_parser.team_info['name'] == team_name]['id'].values[0]
-        return idt
+    def grab_team_id(self, team_name):
+        return next(x['id'] for x in self.api_parser.raw_data['teams'] if x['name'] == team_name)
 
-    def grab_team_name_full(self,team_id):
-        # idt = self.data_parser.team_info.loc[self.data_parser.team_info['id'] == team_id]['name'].values[0]
+    def grab_team_name_full(self, team_id):
         return next(x['name'] for x in self.api_parser.raw_data['teams'] if x['id'] == team_id)
     
-    def grab_team_name_short(self,team_id):
+    def grab_team_name_short(self, team_id):
         return next(x['short_name'] for x in self.api_parser.raw_data['teams'] if x['id'] == team_id)
 
-    def grab_player_fixtures(self, direction, team_id, look_size, reference_gw=None):
-        if not reference_gw:
-            reference_gw = self.api_parser.latest_gw
-        GWS={}
-        req = self.api_parser.fixtures
-        for row in req:
-            GW = row['event']
-            if GW:
-                if GW not in GWS.keys():
-                    GWS[GW] = []
-        #         print((row['team_a'],row['team_h']))
-                GWS[GW].extend((row['team_a'],row['team_h']))
-        for key in GWS:
-            GWS[key] = [(GWS[key][i], GWS[key][i+1]) for i in range(0, len(GWS[key]), 2)]
-        if direction == 'fwd':
-            GWS = {k: v for k, v in GWS.items() if (k > reference_gw and k <= reference_gw + look_size)}
-        elif direction == 'rev':
-            GWS = {k: v for k, v in GWS.items() if (k >= reference_gw - look_size and k <= reference_gw)}
-        fixtures = []
-        for key in GWS:
-            fixture = [(t[0],self.grab_team_name_short(t[0]),'H', self.team_rank(t[0])) if t[1] == team_id else (t[1], self.grab_team_name_short(t[1]),'A', self.team_rank(t[1])) for t in GWS[key] if team_id in (t[0], t[1])]
-            fixtures.append((key,fixture))
-        return fixtures
+    def grab_pos_name(self, idx):
+        return next((x['plural_name_short'] for x in iter(self.api_parser.raw_data['element_types']) if x['id'] == idx), None)
+
+    def grab_upcoming_fixtures(self, id_values: list, games_ahead: int = 99, reference_gw: int = None):
+        '''
+        NB: We enable gw_data['event'] to handle Nonetypes as sometimes there are games that are yet to be rescheduled by the PL, so we remove it until it has been officially announced and updated in API.
+        We also need to preserve gameweeks that are considered blanks, as once data is returned without including it there is no information to point to there being a blank outside of external functions.
+        '''
+        if reference_gw is None: reference_gw = self.api_parser.latest_gw
+        raw_data = self.api_parser.full_element_summary
+        def process_fixtures(all_fixtures: list):            
+            return [{'gameweek': gw_info['event'], 'team': gw_info['team_h'] if gw_info['is_home'] else gw_info['team_a'], 'opponent_team': gw_info['team_a'] if gw_info['is_home'] else gw_info['team_h'], 'is_home': gw_info['is_home']} for gw_info in all_fixtures if (gw_info['event'] and (gw_info['event'] >= reference_gw+1 and gw_info['event'] <= reference_gw + games_ahead - 1))]
+        compiled_player_data = {str(player_id): process_fixtures(raw_data[player_id]['fixtures']) for player_id in sorted(id_values)}
+        
+        #Handle blanks, which are usually not present at all
+        for player_id, player_data in compiled_player_data.items():
+            last_gw = max([x['id'] for x in self.api_parser.raw_data['events']])
+            expected_gws = list(range(reference_gw+1, min(last_gw+1, reference_gw+games_ahead-1)))
+            compiled_gws = list({x['gameweek'] for x in player_data})
+            gw_conflicts = [gw for gw in expected_gws if gw not in compiled_gws]
+            if len(gw_conflicts) >= 1:
+                for gw in gw_conflicts:
+                    compiled_player_data[player_id].append({'gameweek': gw, 'team': None, 'opponent_team': None, 'is_home': None})
+                compiled_player_data[player_id] = sorted(compiled_player_data[player_id], key=lambda x: x['gameweek'])
+                
+        return compiled_player_data
     
     #========================== Custom Operations ==========================
     
@@ -110,12 +130,12 @@ class GeneralHelperFns:
 #       #========================== Compile FDRs from team_info ==========================
         init_id = 1
         fdr_data = {}
-        while init_id < len(self.data_parser.total_summary):
-            if init_id in list(self.data_parser.total_summary['id_player'].unique()):
+        while init_id < len(self.api_parser.player_ids):
+            if init_id in self.api_parser.player_ids:
                 null_team_id = self.grab_player_team_id(init_id)
-                elementdat = self.api_parser.fetch_data_from_api(f'element-summary/{init_id}/')
+                player_element_summary = self.api_parser.full_element_summary[init_id]["fixtures"]
                 try:
-                    fdr_info = [[([i['team_h'],i['team_a']],i['difficulty']) for i in elementdat["fixtures"]][0]]
+                    fdr_info = [[([i['team_h'],i['team_a']],i['difficulty']) for i in player_element_summary][0]]
                     fdr_simpl = [((set(x[0]) - {null_team_id}).pop(),x[1]) for x in fdr_info]
                     for pair in fdr_simpl:
                         if pair[0] not in fdr_data.keys():
@@ -124,10 +144,10 @@ class GeneralHelperFns:
                     pass
             init_id += 10
         init_id = 1
-        while len(fdr_data) < 20 and init_id < len(self.data_parser.total_summary):
+        while len(fdr_data) < 20 and init_id < len(self.api_parser.player_ids):
             null_team_id = self.grab_player_team_id(init_id)
-            elementdat = self.api_parser.fetch_data_from_api(f'element-summary/{init_id}/')
-            fdr_info = [([i['team_h'],i['team_a']],i['difficulty']) for i in elementdat["fixtures"]][:3]
+            player_element_summary = self.api_parser.full_element_summary[init_id]["fixtures"]
+            fdr_info = [([i['team_h'],i['team_a']],i['difficulty']) for i in player_element_summary][:3]
             fdr_simpl = [((set(x[0]) - {null_team_id}).pop(),x[1]) for x in fdr_info]
             for pair in fdr_simpl:
                 if pair[0] not in fdr_data.keys():
@@ -179,15 +199,15 @@ class GeneralHelperFns:
         name_entries_to_omit = ['van']
         preconcat_name = [seg for seg in segments if len(seg) > 2 and seg.lower() not in name_entries_to_omit and not seg[0].isupper()]
         preconcat_name = ' '.join(preconcat_name)
-        all_players_from_total_summary = self.data_parser.total_summary.player.tolist()
-        while preconcat_name not in all_players_from_total_summary:
-            M1 = difflib.get_close_matches(player_name_entry, all_players_from_total_summary)
+        all_player_ids = self.api_parser.player_ids
+        while preconcat_name not in all_player_ids:
+            M1 = difflib.get_close_matches(player_name_entry, all_player_ids)
             split_strings = player_name_entry.split(" ")
             M2 = []
             for split_str in split_strings:
                 if len(split_str) < 3:
                     continue
-                for csv_name in all_players_from_total_summary:
+                for csv_name in all_player_ids:
                     csv_alt = ''.join(c for c in unicodedata.normalize('NFD', csv_name)
                                       if unicodedata.category(c) != 'Mn')
                     if split_str.lower() in csv_alt.lower():
@@ -419,7 +439,7 @@ class GeneralHelperFns:
             print(f'{self.grab_player_name(c)} -- {d}/{entries}')
         return
 
-    def display_beacon_tallies_this_gw(player_ids: list):
+    def display_beacon_tallies_this_gw(self, player_ids: list):
         fplcounter = {player_id: 0 for player_id in player_ids}
         output_file_path = os.path.abspath("../../stats/beacon_team_history.txt")
         file = open(output_file_path, "r")
@@ -470,7 +490,7 @@ class UnderStatHelperFns:
         league_player_data = understat.league(league="EPL").get_player_data(season="2024")
         player_data_understat = pd.DataFrame(data=league_player_data)
         understat_player_data = player_data_understat[['id','player_name','team_title']]
-        fpl_player_data = self.data_parser.total_summary[['id_player','first_name','second_name','web_name','name']]
+        fpl_player_data = pd.DataFrame([{**{key: v[key] for key in ['first_name', 'second_name','web_name', 'team_name']}, 'id_player': k} for k, v in self.data_parser.master_summary.items()])
         column_mapping = {'id_player': 'id', 'web_name': 'player_name'}
         fpl_player_data = fpl_player_data.rename(columns=column_mapping)
         fpl_player_data['combined_name'] = fpl_player_data['first_name'] + " " + fpl_player_data['second_name']
