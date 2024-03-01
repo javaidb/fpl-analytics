@@ -78,21 +78,19 @@ class VisualizationOperations:
     # def plot_individual_stats(self,player_name,paramlist):
     #     return
 
-    def grab_ownership_count_str(self, player_id,league_id,format_color):
-        ids = self.data_parser.effective_ownership[str(league_id)]
-        total_rivals = ids['rivals']
-        total_players = ids['players']
-        if player_id not in total_players.keys():
-            count = 0
+    def grab_ownership_count_str(self, player_id: int, league_name, format_color):
+        compiled_ownership = next(x["summary"] for x in iter(self.data_parser.league_data) if x["name"] == str(league_name))
+        relevant_player_ids = compiled_ownership["players"]
+
+        id_count = 0 if player_id not in relevant_player_ids.keys() else relevant_player_ids[player_id]
+        if id_count == 0 and format_color == "sell":
+            count_str = f"\033[31m{id_count}\033[0m"
+        elif id_count != 0 and format_color == "buy":
+            count_str = f"\033[34m{id_count}\033[0m"
         else:
-            count = total_players[player_id]
-        if count == 0 and format_color == 'sell':
-            count_str = "\033[31m" +  str(count) + "\033[0m"
-        elif count != 0 and format_color == 'buy':
-            count_str = "\033[34m" +  str(count) + "\033[0m"
-        else:
-            count_str = str(count)
-        return count_str + "/" + str(total_rivals)
+            count_str = f"{id_count}"
+        num_rivals = len(compiled_ownership["rivals"])
+        return f"{count_str}/{num_rivals}"
 
 #========================================================================================================================================================================================
 #===================================================================== TABULAR VISUALIZATION USING ASCII ATTRIBUTES =====================================================================
@@ -151,7 +149,7 @@ class VisualizationOperations:
             
             
 
-    def calc_rgb_from_colors_n_weights(color1, color2, weight):
+    def calc_rgb_from_colors_n_weights(self, color1, color2, weight):
         """Interpolate between two colors with a given weight."""
         r = (1 - weight) * color1[0] + weight * color2[0]
         g = (1 - weight) * color1[1] + weight * color2[1]
@@ -216,7 +214,7 @@ class VisualizationOperations:
                 val_str += color_code + str(round(float(val),2)) + ' \033[0m'
             else:
                 color_code = ""
-                val_str += f'{round(float(val),2)} ' if is_numeric(val) else val
+                val_str += f'{round(float(val),2)}' if is_numeric(val) else val
         return val_str
 
     def compile_ascii_n_spacing_for_fixtures(self, all_fixture_data):
@@ -343,18 +341,20 @@ class VisualizationOperations:
 
         return [{k: v for k, v in d.items() if v is not None} for d in transformed_player_data]
 
-    def player_summary(self, player_ids: list):
+    def player_summary(self, player_ids: list, param_spread: int = 6):
 
         compiled_player_data = self.helper_fns.compile_player_data(player_ids)
-        sliced_player_data = self.helper_fns.slice_player_data(compiled_player_data, 3)
+        sliced_player_data = self.helper_fns.slice_player_data(compiled_player_data, param_spread)
         seq_map = {'GKP':0, 'DEF':1, 'MID':2, 'FWD':3}
         sliced_player_data = sorted(sliced_player_data, key=lambda x: (seq_map[x['pos_singular_name_short']], -statistics.mean(x['total_points'])))
         plot_player_data = self.transform_player_data_for_vis_pt(sliced_player_data)
 
-        cols_of_interest = ['pos_singular_name_short', 'team_short_name', 'web_name', 'total_points', 'bps', 'ict_index', 'expected_goal_involvements', 'minutes', 'opponent_team', 'value']
+        cols_of_interest = ['pos_singular_name_short', 'team_short_name', 'web_name', 'value', 'opponent_team', 'total_points', 'bps', 'ict_index', 'expected_goal_involvements', 'minutes']
 
     #     table_cols = ['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆₁ₖ','☆₁₀ₖ','☆₁₀₀ₖ','☆','Upcoming Fixtures']
-        table_cols = ['Position', 'Team', 'Player',  'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes', 'Past FDRs', 'Cost']
+        table_cols = ['Position', 'Team', 'Player', 'Cost', 'Past FDRs', 'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes']
+        for league_info in self.data_parser.league_data:
+            table_cols += [league_info["symbol"]]
         tab = PrettyTable(table_cols)
         prev_position = None
         for player_data in plot_player_data:
@@ -365,16 +365,18 @@ class VisualizationOperations:
             temp_tab_row = []
             for col_name in cols_of_interest:
                 temp_tab_row.append(player_data[col_name])
+            for league_info in self.data_parser.league_data:
+                temp_tab_row.append(self.grab_ownership_count_str(int(float((player_data['id']))), league_name=league_info["name"] , format_color='buy'))
             tab.add_row(temp_tab_row)
             prev_position = position
         print(tab)
         return plot_player_data
 
     def display_tabular_summary(self):
-        replacements = [x['id'] for x in self.data_analytics.replacement_players]
+        replacements = self.data_analytics.replacement_players
         beacon_picks = list(self.data_analytics.beacon_effective_ownership.keys())
         values = list(set(replacements).union(set(beacon_picks)))
-        values = [x for x in values if x not in self.data_analytics.optimized_personal_team_df.id.tolist()]
+        values = [x for x in values if x not in list(self.data_analytics.personal_team_data.keys())]
         self.player_summary(player_ids=values)
         return
 
