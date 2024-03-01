@@ -63,7 +63,7 @@ class FPLAPIParser:
 
     def get_league_ids(self):
         active_szn = self.config_data["fpl_id_data"]
-        return active_szn["personal_league_ids"]
+        return [x["id"] for x in active_szn["personal_league_ids"]]
 
     def get_beacon_ids(self):
         active_szn = self.config_data["fpl_id_data"]
@@ -87,25 +87,41 @@ class FPLAPIParser:
                     RIVAL_IDS.append(i['entry'])
             rival_team_ids.append(RIVAL_IDS)
 
+    def fetch_fpl_data(self, fpl_id):
+        fpl_info = self.fetch_data_from_api(f"entry/{fpl_id}")
+        latest_picks = self.fetch_data_from_api(f"entry/{fpl_id}/event/{self.latest_gw}/picks/")
+        if latest_picks['active_chip'] and latest_picks['active_chip'] == "freehit":
+            latest_picks = self.fetch_data_from_api(f"entry/{fpl_id}/event/{self.latest_gw - 1}/picks/")
+        return {
+            "general_info": fpl_info,
+            "latest_picks": latest_picks
+        }
+
+    def fetch_player_overall_fpl_rank(self, ID):
+        r = self.fetch_fpl_data(ID)
+        return r["general_info"]["summary_overall_rank"]
+
+    def fetch_player_fpl_name(self, ID):
+        r = self.fetch_fpl_data(ID)["general_info"]
+        first_name = r["player_first_name"]
+        last_name = r["player_last_name"]
+        return f"{first_name} {last_name}"
+
     def fetch_personal_fpl_data(self):
-        active_szn = self.config_data["fpl_id_data"]
-        r = self.fetch_data_from_api(f'entry/{active_szn["personal_team_id"]}/event/{self.latest_gw}/picks/')
-        if r['active_chip'] and r['active_chip'] == "freehit":
-            r = self.fetch_data_from_api(f'entry/{active_szn["personal_team_id"]}/event/{self.latest_gw-1}/picks/')
-        return r
+        fpl_id = self.get_personal_fpl_id()
+        return self.fetch_fpl_data(fpl_id)
     
     def fetch_fixtures(self):
         return self.fetch_data_from_api('fixtures/')
     
     def look_for_blanks_and_dgws(self):
         GWS={}
-        req = self.fetch_data_from_api('fixtures/')
-        for row in req:
-            GW = row['event']
+        for fixture_data in self.fixtures:
+            GW = fixture_data['event']
             if GW:
                 if GW not in GWS.keys():
                     GWS[GW] = []
-                GWS[GW].extend((row['team_a'],row['team_h']))
+                GWS[GW].extend((fixture_data['team_a'],fixture_data['team_h']))
         BLANKS={}
         DGWS={}
         for gw,teams in GWS.items():
@@ -128,7 +144,7 @@ class FPLAPIParser:
                 elif resp.status == 429:
                     # Rate limit exceeded, implement backoff
                     retry_after = int(resp.headers.get('Retry-After', 5))  # Default to 5 seconds
-                    print(f"Rate limit exceeded. Retrying after {retry_after} seconds.")
+                    # print(f"Rate limit exceeded. Retrying after {retry_after} seconds.")
                     await asyncio.sleep(retry_after)
                     return await self.fetch_element_summaries(player_id, session)
                 else:
