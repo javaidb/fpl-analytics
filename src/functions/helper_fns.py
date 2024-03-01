@@ -9,6 +9,7 @@ from collections import defaultdict
 from understatapi import UnderstatClient
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
+import difflib
 
 def calculate_mean_std_dev(data):
     mean = sum(data) / len(data)
@@ -80,13 +81,13 @@ class GeneralHelperFns:
     def grab_player_bps(self, idx, include_gws=False):
         return [param_val if not include_gws else (gw, param_val) for gw, param_val in self.compile_player_data([idx])[idx]['bps']]
      
-    def grab_player_full90s(self, idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fulltime']
-        return name.values[-1]
+    # def grab_player_full90s(self, idx):
+    #     name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fulltime']
+    #     return name.values[-1]
 
-    def grab_player_full60s(self, idx):
-        name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fullhour']
-        return name.values[-1]
+    # def grab_player_full60s(self, idx):
+    #     name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fullhour']
+    #     return name.values[-1]
 
     def grab_team_id(self, team_name):
         return next(x['id'] for x in self.api_parser.raw_data['teams'] if x['name'] == team_name)
@@ -194,28 +195,38 @@ class GeneralHelperFns:
                 rec = 'VLT+'
         return (rec,difflist)
     
-    def loop_name_finder(self, player_name_entry):
-        segments = player_name_entry.split(" ")
-        name_entries_to_omit = ['van']
-        preconcat_name = [seg for seg in segments if len(seg) > 2 and seg.lower() not in name_entries_to_omit and not seg[0].isupper()]
-        preconcat_name = ' '.join(preconcat_name)
-        all_player_ids = self.api_parser.player_ids
-        while preconcat_name not in all_player_ids:
-            M1 = difflib.get_close_matches(player_name_entry, all_player_ids)
-            split_strings = player_name_entry.split(" ")
-            M2 = []
-            for split_str in split_strings:
-                if len(split_str) < 3:
-                    continue
-                for csv_name in all_player_ids:
-                    csv_alt = ''.join(c for c in unicodedata.normalize('NFD', csv_name)
-                                      if unicodedata.category(c) != 'Mn')
-                    if split_str.lower() in csv_alt.lower():
-                        M2.append(csv_name)
-            preconcat_name = input(f'Couldnt find "{preconcat_name}", did you mean any of the following?\n{list(set(M1) | set(M2))}\n')
-            if preconcat_name == "":
-                return preconcat_name
-        return preconcat_name
+    def find_best_match(self, input_string):
+        best_matches = []
+        max_score = 0
+        dict_list = [{**{k: v for k, v in self.data_parser.master_summary[x].items() if k in ['first_name', 'second_name', 'web_name', 'pos_singular_name_short', 'team_short_name']}, 'id': x} for x in api_ops.player_ids]
+        
+        for d in dict_list:
+            for key in ['web_name', 'second_name', 'first_name']:
+                score = difflib.SequenceMatcher(None, input_string, d[key]).ratio()
+                if score > max_score:
+                    max_score = score
+                    best_matches = [d]
+                elif score == max_score:
+                    best_matches.append(d)
+        def remove_duplicates(dicts):
+            return [dict(t) for t in {tuple(sorted(d.items())) for d in dicts}]
+        best_matches = remove_duplicates(best_matches)
+        
+        if len(best_matches) == 1:
+            return best_matches[0]["id"]
+        elif len(best_matches) > 1:
+            for i, match in enumerate(best_matches):
+                name_str = f"{match['web_name']} [{match['team_short_name']}] ({match['first_name']} {match['second_name']})"
+                print(f"{i + 1}: {name_str}")
+            choice = input("Enter the number of the match you want to select (or press Enter to skip): ")
+            if choice.isdigit() and int(choice) <= len(best_matches):
+                return best_matches[int(choice) - 1]["id"]
+            if choice.strip() == "":
+                print("Skipping selection.")
+            else:
+                print("Invalid choice.")
+        elif len(best_matches) == 0:
+            return None
     
     #========================== User Functions ==========================
     
