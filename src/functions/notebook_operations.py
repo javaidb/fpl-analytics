@@ -341,7 +341,7 @@ class VisualizationOperations:
 
         return [{k: v for k, v in d.items() if v is not None} for d in transformed_player_data]
 
-    def player_summary(self, player_ids: list, param_spread: int = 6):
+    def player_summary(self, player_ids: list, param_spread: int = 5):
 
         compiled_player_data = self.helper_fns.compile_player_data(player_ids)
         sliced_player_data = self.helper_fns.slice_player_data(compiled_player_data, param_spread)
