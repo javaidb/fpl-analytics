@@ -5,3 +5,6 @@ __pycache__/
 # Ignore Jupyter Notebook checkpoints
 # Jupyter Notebook creates ".ipynb_checkpoints" directories to store checkpoint files, which are used for notebook recovery and are not necessary for version control.
 .ipynb_checkpoints/
+
+# Ignore dev notebooks folder used for experimental testing
+notebooks/development/
