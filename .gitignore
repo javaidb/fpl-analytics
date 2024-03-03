@@ -1,2 +1,7 @@
-# Byte-compiled / optimized / DLL files
+# Ignore Python bytecode cache files
+# These files are created by Python in "__pycache__" directories to cache compiled bytecode, and are not needed in the repository.
 __pycache__/
+
+# Ignore Jupyter Notebook checkpoints
+# Jupyter Notebook creates ".ipynb_checkpoints" directories to store checkpoint files, which are used for notebook recovery and are not necessary for version control.
+.ipynb_checkpoints/
