@@ -23,6 +23,7 @@ class GeneralHelperFns:
         self.data_parser = data_parser
         self.api_parser = api_parser
         self.fdr_data = self.compile_fdr_data()
+        self.unique_player_data = self.grab_all_unique_fpl_player_data()
 
     
     def compile_player_data(self, id_values: list):
@@ -109,13 +110,13 @@ class GeneralHelperFns:
         if reference_gw is None: reference_gw = self.api_parser.latest_gw
         raw_data = self.api_parser.full_element_summary
         def process_fixtures(all_fixtures: list):            
-            return [{'gameweek': gw_info['event'], 'team': gw_info['team_h'] if gw_info['is_home'] else gw_info['team_a'], 'opponent_team': gw_info['team_a'] if gw_info['is_home'] else gw_info['team_h'], 'is_home': gw_info['is_home']} for gw_info in all_fixtures if (gw_info['event'] and (gw_info['event'] >= reference_gw+1 and gw_info['event'] <= reference_gw + games_ahead - 1))]
+            return [{'gameweek': gw_info['event'], 'team': gw_info['team_h'] if gw_info['is_home'] else gw_info['team_a'], 'opponent_team': gw_info['team_a'] if gw_info['is_home'] else gw_info['team_h'], 'is_home': gw_info['is_home']} for gw_info in all_fixtures if (gw_info['event'] and (gw_info['event'] >= reference_gw+1 and gw_info['event'] <= reference_gw + games_ahead))]
         compiled_player_data = {str(player_id): process_fixtures(raw_data[player_id]['fixtures']) for player_id in sorted(id_values)}
         
         #Handle blanks, which are usually not present at all
         for player_id, player_data in compiled_player_data.items():
             last_gw = max([x['id'] for x in self.api_parser.raw_data['events']])
-            expected_gws = list(range(reference_gw+1, min(last_gw+1, reference_gw+games_ahead-1)))
+            expected_gws = list(range(reference_gw+1, min(last_gw+1, reference_gw+games_ahead+1)))
             compiled_gws = list({x['gameweek'] for x in player_data})
             gw_conflicts = [gw for gw in expected_gws if gw not in compiled_gws]
             if len(gw_conflicts) >= 1:
@@ -124,7 +125,26 @@ class GeneralHelperFns:
                 compiled_player_data[player_id] = sorted(compiled_player_data[player_id], key=lambda x: x['gameweek'])
                 
         return compiled_player_data
-    
+
+    def grab_all_unique_fpl_player_data(self):
+        return [{**{k: v for k, v in self.data_parser.master_summary[x].items() if k in ['first_name', 'second_name', 'web_name', 'pos_singular_name_short', 'team_short_name', 'team']}, 'id': x} for x in self.api_parser.player_ids]
+
+    def grab_bins_from_param(self, input_param):
+        if input_param == 'ict_index':
+            return (3.5, 5, 7.5)
+        elif input_param == 'expected_goal_involvements':
+            return (0.2, 0.5, 0.9)
+        elif input_param == 'total_points':
+            return (4, 6, 9)
+        elif input_param == 'bps':
+            return (14, 21, 29)
+        elif input_param == 'minutes':
+            return (45, 60, 89)
+        elif input_param == 'value':
+            return (3.8, 7.0, 13.0)
+        else:
+            return None
+
     #========================== Custom Operations ==========================
     
     def compile_fdr_data(self):
@@ -195,19 +215,24 @@ class GeneralHelperFns:
                 rec = 'VLT+'
         return (rec,difflist)
     
-    def find_best_match(self, input_string):
+    def find_best_match(self, input_string, input_team_id: int = None):
         best_matches = []
         max_score = 0
-        dict_list = [{**{k: v for k, v in self.data_parser.master_summary[x].items() if k in ['first_name', 'second_name', 'web_name', 'pos_singular_name_short', 'team_short_name']}, 'id': x} for x in api_ops.player_ids]
-        
+        dict_list = [{**d, 'concat_name': f"{d['first_name']} {d['second_name']}"} for d in self.unique_player_data]
+        if input_team_id is not None:
+            dict_list = [x for x in dict_list if x["team"] == input_team_id]
+        # col_names = ['web_name', 'second_name', 'first_name', 'concat_name']
+        col_names = ['web_name', 'concat_name']
         for d in dict_list:
-            for key in ['web_name', 'second_name', 'first_name']:
+            summary = d.copy()
+            for key in col_names:
                 score = difflib.SequenceMatcher(None, input_string, d[key]).ratio()
+                summary["score"] = score
                 if score > max_score:
                     max_score = score
-                    best_matches = [d]
+                    best_matches = [summary]
                 elif score == max_score:
-                    best_matches.append(d)
+                    best_matches.append(summary)
         def remove_duplicates(dicts):
             return [dict(t) for t in {tuple(sorted(d.items())) for d in dicts}]
         best_matches = remove_duplicates(best_matches)
@@ -217,8 +242,8 @@ class GeneralHelperFns:
         elif len(best_matches) > 1:
             for i, match in enumerate(best_matches):
                 name_str = f"{match['web_name']} [{match['team_short_name']}] ({match['first_name']} {match['second_name']})"
-                print(f"{i + 1}: {name_str}")
-            choice = input("Enter the number of the match you want to select (or press Enter to skip): ")
+                print(f"{i + 1}: {name_str} ({match['score']})")
+            choice = input(f"Enter the number of the match for '{input_string}' you want to select (or press Enter to skip): ")
             if choice.isdigit() and int(choice) <= len(best_matches):
                 return best_matches[int(choice) - 1]["id"]
             if choice.strip() == "":
@@ -476,84 +501,18 @@ class GeneralHelperFns:
             print(f'{self.helper_fns.grab_player_name(key)} -- {tier}{value}\033[0m / {entries}')
         return
     
-class UnderStatHelperFns:
-    def __init__(self, api_parser, data_parser):
-        self.api_parser = api_parser
-        self.data_parser = data_parser
-        self._match_fpl_to_understat()
-        self._build_team_data()
-    
-    def _match_fpl_to_understat(self):
-        #Matching teams
-        print('Matching FPL teams to UnderStat teams...')
-        teams = pd.json_normalize(self.api_parser.raw_data['teams'])
-        fpl_ids = teams['id'].tolist()
-        fpl_names = teams['name'].tolist()
-        self.fpl_nums = list(zip(fpl_ids, fpl_names))
-        with UnderstatClient() as understat:
-            league_szn_team_stats = understat.league(league="EPL").get_team_data(season="2023")
-            understat_nums_unsorted = [(x['id'],x['title']) for x in league_szn_team_stats.values()]
-            self.understat_nums = sorted(understat_nums_unsorted, key=lambda x: x[1])
-        self.team_nums = list(zip(self.fpl_nums,self.understat_nums))
+# class UnderStatHelperFns:
+#     def __init__(self, api_parser, data_parser):
+#         self.api_parser = api_parser
+#         self.data_parser = data_parser
+#         self._match_fpl_to_understat()
+#         self._build_team_data()
 
-        #Matching players; UDID TO FPLID
-        print('Matching FPL players to UnderStat players...')
-        league_player_data = understat.league(league="EPL").get_player_data(season="2024")
-        player_data_understat = pd.DataFrame(data=league_player_data)
-        understat_player_data = player_data_understat[['id','player_name','team_title']]
-        fpl_player_data = pd.DataFrame([{**{key: v[key] for key in ['first_name', 'second_name','web_name', 'team_name']}, 'id_player': k} for k, v in self.data_parser.master_summary.items()])
-        column_mapping = {'id_player': 'id', 'web_name': 'player_name'}
-        fpl_player_data = fpl_player_data.rename(columns=column_mapping)
-        fpl_player_data['combined_name'] = fpl_player_data['first_name'] + " " + fpl_player_data['second_name']
-        matched_df = pd.DataFrame(columns=['ID_understat', 'ID_FPL'])
-        player_nums = []
-        for _, row in understat_player_data.iterrows():
-            #Understat data
-            name_df1 = row['player_name']
-            id_df1 = row['id']
-            team_df1 = row['team_title'].split(",")[-1]
-            #Fpl data
-            try:
-                fpl_team_name = [x[0][1] for x in self.team_nums if x[1][1] == team_df1][0]
-                relevant_fpl_df = fpl_player_data.loc[fpl_player_data['name'] == fpl_team_name]
-            except Exception as e:
-                print(team_df1)
-                print(e)
-            closest_match = process.extractOne(name_df1, relevant_fpl_df['combined_name'], scorer=fuzz.ratio)
-            # Assuming a minimum threshold for matching (adjust as needed)
-            if closest_match[1] >= 40:
-                matched_name_df2 = closest_match[0]
-                matched_index_df2 = fpl_player_data[fpl_player_data['combined_name'] == matched_name_df2].index[0]
-                id_df2 = fpl_player_data.at[matched_index_df2, 'id']
-                matched_df = matched_df.append({'ID_understat': int(id_df1), 'ID_FPL': int(id_df2)}, ignore_index=True)
-                player_nums.append(((id_df2,matched_name_df2),(id_df1,name_df1)))
-            else:
-                print(f'Issues with: {name_df1} {team_df1} {closest_match}')
-        self.full_players_nums_df=matched_df
-        self.player_nums = player_nums
-        print(f'{len(self.full_players_nums_df)} / {len(understat_player_data)} players processed...')
-
-    def _build_team_data(self):
-        print('Building team stats for season so far...')
-        understat = UnderstatClient()
-        data_team = understat.league(league="EPL").get_team_data(season="2023")
-        new_team_data = {}
-        for team_id, team_data in data_team.items():
-            new_team_data[team_id] = team_data.copy()
-            new_history = {}
-            for game in team_data['history']:
-                for key, value in game.items():
-                    if key not in new_history:
-                        new_history[key] = []
-                    new_history[key].append(value)
-            new_team_data[team_id]['history'] = new_history
-        self.new_team_data = new_team_data
-
-    def grab_player_USID_from_FPLID(self, FPL_ID):
-        return int([x[1][0] for x in self.player_nums if str(x[0][0]) == str(FPL_ID)][0])
+    # def grab_player_USID_from_FPLID(self, FPL_ID):
+    #     return int([x[1][0] for x in self.player_nums if str(x[0][0]) == str(FPL_ID)][0])
         
-    def grab_team_USID_from_FPLID(self, FPL_ID):
-        return int([x[1][0] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0])
+    # def grab_team_USID_from_FPLID(self, FPL_ID):
+    #     return int([x[1][0] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0])
         
-    def grab_team_USname_from_FPLID(self, FPL_ID):
-        return [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
+    # def grab_team_USname_from_FPLID(self, FPL_ID):
+    #     return [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
