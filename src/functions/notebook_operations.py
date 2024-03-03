@@ -96,22 +96,6 @@ class VisualizationOperations:
 #===================================================================== TABULAR VISUALIZATION USING ASCII ATTRIBUTES =====================================================================
 #========================================================================================================================================================================================
 
-    def grab_bins_from_param(self, input_param):
-        if input_param == 'ict_index':
-            return (3.5, 5, 7.5)
-        elif input_param == 'expected_goal_involvements':
-            return (0.2, 0.5, 0.9)
-        elif input_param == 'total_points':
-            return (4, 6, 9)
-        elif input_param == 'bps':
-            return (14, 21, 29)
-        elif input_param == 'minutes':
-            return (45, 60, 89)
-        elif input_param == 'value':
-            return (3.8, 7.0, 13.0)
-        else:
-            return None
-
     def grab_ascii_bins(self, bin_length, ascii_purpose, return_sequence = 'ansi', custom_color_scheme = None):
         # color_code = '\033[1;30;2m'  # muted grey
         color_map = {
@@ -176,7 +160,7 @@ class VisualizationOperations:
         return "#" + "".join("%02x" % round(c * 255) for c in self.calc_rgb_from_colors_n_weights(ascii_lower, ascii_upper, weight))
 
     def compile_gradient_color_str(self, input_vals, input_param, custom_scheme=None):
-        param_bins = self.grab_bins_from_param(input_param)
+        param_bins = self.helper_fns.grab_bins_from_param(input_param)
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'gradient', 'rgb', custom_scheme)
     #     print(f'{input_vals} {param_bins} {ascii_bins}')
@@ -202,7 +186,7 @@ class VisualizationOperations:
         background-color ANSI escape code for the cell based on the value's
         position between the minimum and maximum.
         """
-        param_bins = self.grab_bins_from_param(input_param)
+        param_bins = self.helper_fns.grab_bins_from_param(input_param)
         is_numeric = lambda s: s.replace('.', '', 1).isdigit() if isinstance(s, str) else isinstance(s, (int, float))
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'static', 'ansi', custom_scheme)
@@ -249,12 +233,11 @@ class VisualizationOperations:
                 #For cases where this fixture IS a double
                 elif gw_data['gameweek'] in gameweek_special_cases['dgws']:
                     mgw_count += 1
-                    if mgw_count == 1:
-                        space_between_fixtures = no_space
+                    if mgw_count == 1: space_between_fixtures = no_space
                     
                 fdr = self.helper_fns.team_rank(gw_data['opponent_team'])
                 rgb_tuple = fdr_color_scheme[fdr]
-                team = self.helper_fns.grab_player_team(gw_data['opponent_team'])
+                team = self.helper_fns.grab_team_name_short(gw_data['opponent_team'])
                 loc = 'H' if gw_data['is_home'] else 'A'
                 
                 printstring += f"\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m{spacing}{team} ({loc}){spacing}{xtra}\x1b[0m{space_between_fixtures}"
@@ -272,7 +255,7 @@ class VisualizationOperations:
         '''
         Input data (fixture_dict_with_ids) is output from grab_upcoming_fixtures() in helper_fns.
         '''
-        return {str(player_id): self.compile_ascii_n_spacing_for_fixtures(fixture_data) for player_id, fixture_data in fixture_dict_with_ids.items()}
+        return {int(float((player_id))): self.compile_ascii_n_spacing_for_fixtures(fixture_data) for player_id, fixture_data in fixture_dict_with_ids.items()}
 
 
     def compile_ascii_team_name(self, team_name_short):
@@ -355,10 +338,12 @@ class VisualizationOperations:
         table_cols = ['Position', 'Team', 'Player', 'Cost', 'Past FDRs', 'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes']
         for league_info in self.data_parser.league_data:
             table_cols += [league_info["symbol"]]
+        table_cols += ['Upcoming Fixtures']
         tab = PrettyTable(table_cols)
         prev_position = None
         for player_data in plot_player_data:
             position = player_data['pos_singular_name_short']
+            player_id = int(float(player_data['id']))
             if prev_position:
                 if prev_position != position:
                     tab.add_row(['']*len(table_cols))
@@ -367,6 +352,7 @@ class VisualizationOperations:
                 temp_tab_row.append(player_data[col_name])
             for league_info in self.data_parser.league_data:
                 temp_tab_row.append(self.grab_ownership_count_str(int(float((player_data['id']))), league_name=league_info["name"] , format_color='buy'))
+            temp_tab_row.append(self.compile_n_format_upcoming_fixtures_for_vis(self.helper_fns.grab_upcoming_fixtures([player_id], 4))[player_id])
             tab.add_row(temp_tab_row)
             prev_position = position
         print(tab)
