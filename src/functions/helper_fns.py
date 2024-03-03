@@ -1,15 +1,17 @@
+import os
+import ast
 import math
-import asyncio
-import unicodedata
 import difflib
 import pandas as pd
-import ast
-import os
+import numpy as np
+
 from collections import defaultdict
-from understatapi import UnderstatClient
-from fuzzywuzzy import fuzz
-from fuzzywuzzy import process
-import difflib
+
+import asyncio
+
+# from understatapi import UnderstatClient
+# from fuzzywuzzy import fuzz
+# from fuzzywuzzy import process
 
 def calculate_mean_std_dev(data):
     mean = sum(data) / len(data)
@@ -501,18 +503,227 @@ class GeneralHelperFns:
             print(f'{self.helper_fns.grab_player_name(key)} -- {tier}{value}\033[0m / {entries}')
         return
     
-# class UnderStatHelperFns:
-#     def __init__(self, api_parser, data_parser):
-#         self.api_parser = api_parser
-#         self.data_parser = data_parser
-#         self._match_fpl_to_understat()
-#         self._build_team_data()
+class UnderStatHelperFns:
+    def __init__(self, understat_fetcher):
+        self.api_understat_parser = understat_fetcher
 
-    # def grab_player_USID_from_FPLID(self, FPL_ID):
-    #     return int([x[1][0] for x in self.player_nums if str(x[0][0]) == str(FPL_ID)][0])
+    def grab_player_USID_from_FPLID(self, fpl_player_id):
+        return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_player_data) if x["fpl"]["id"] == fpl_player_id), None)
         
-    # def grab_team_USID_from_FPLID(self, FPL_ID):
-    #     return int([x[1][0] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0])
+    def grab_team_USID_from_FPLID(self, fpl_player_id):
+        return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
         
-    # def grab_team_USname_from_FPLID(self, FPL_ID):
-    #     return [x[1][1] for x in self.team_nums if str(x[0][0]) == str(FPL_ID)][0]
+    def grab_team_USname_from_FPLID(self, fpl_player_id):
+        return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
+
+    def fetch_team_xg_against_teams_data(self, fpl_team_id):
+        """
+        Function returns xG of a specified team against all teams so far. Use fetch team all stats for expanded view
+        """
+        team_match_data = self.api_understat_parser.understat_team_match_data[fpl_team_id]
+        xg_data = []
+        for gw, data in enumerate(team_match_data):
+            side = data['side']
+            def opposite_side(side):
+                if side == 'h':
+                    return 'a'
+                elif side == 'a':
+                    return 'h'
+            opposing_team = data[opposite_side(side)]
+            xg_data.append({
+                "gameweek": gw+1,
+                "xG": data['xG'][side],
+                "opponent_team_data": opposing_team
+            })
+        return xg_data
+    
+    def fetch_finite_team_param_stats(self, look_back):
+        """
+        Function returns all stats of all teams over a certain look back period, thus reducing to a finite value, both outputting averages and sums of all stats. 
+        Usefulness is in stats like PPDA which outline how well-pressing certain teams are, which can be later be used to match up upcoming 
+        teams and assess weaknesses based on general PPDA and specific PPDA.
+        """
+        cols_to_omit = ['h_a', 'result', 'date', 'id', 'title']
+        
+        compiled_team_data = []
+        for _, team_data in self.api_understat_parser.understat_team_data.items():
+            temp_data = {'id': team_data['id'], 'title': team_data['title']}
+            for key, values in team_data['history'].items():
+                if key not in cols_to_omit:
+                    temp_data[f"{key}_avg"] = np.mean(values[-look_back:])
+                    temp_data[f"{key}_sum"] = np.sum(values[-look_back:])
+                else: continue
+            compiled_team_data.append(temp_data)
+        return compiled_team_data
+
+
+#     def fetch_player_shots_against_teams(self, fpl_player_id, TEAM_AGAINST_ID):
+#         player_shot_data = self.understat_player_shot_data_group[fpl_player_id]
+#         df = pd.DataFrame(data=player_shot_data)
+#         team_dict = {}
+#         for _, row in df.iterrows():
+#             season = row['season']
+#             result  = row['result']
+#             shot_type = row['shotType']
+#             situation = row['situation']
+#             if row['h_a'] == 'h':
+#                 team = row['a_team']
+#                 if team not in team_dict:
+#                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+#                 if season not in team_dict[team]['seasons']:
+#                     team_dict[team]['seasons'][season] = {'h': {}, 'a': {}}
+#                 if shot_type not in team_dict[team]['seasons'][season]['h'].keys():
+#                     team_dict[team]['seasons'][season]['h'][shot_type] = []
+#                 team_dict[team]['seasons'][season]['h'][shot_type].append((situation, result))
+#                 if result == 'Goal':
+#                     team_dict[team]['h'] += 1
+#             elif row['h_a'] == 'a':
+#                 team = row['h_team']
+#                 if team not in team_dict:
+#                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+#                 if season not in team_dict[team]['seasons']:
+#                     team_dict[team]['seasons'][season] = {'h': {}, 'a': {}}
+#                 if shot_type not in team_dict[team]['seasons'][season]['a'].keys():
+#                     team_dict[team]['seasons'][season]['a'][shot_type] = []
+#                 team_dict[team]['seasons'][season]['a'][shot_type].append((situation, result))
+#                 if result == 'Goal':
+#                     team_dict[team]['a'] += 1
+
+#         output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
+#         output_df.columns = ['Team', 'h', 'a', 'full_summary']
+#         def order_season_by_year(season):
+#             return {year: season[year] for year in sorted(season.keys())}
+#         output_df['full_summary'] = output_df['full_summary'].apply(order_season_by_year)
+#         output_df = output_df.sort_values(by=['Team']).reset_index(drop=True)
+#         spreaded_stats = {}
+#         for szn,data in output_df.loc[output_df['Team'] == self.und_helper_fns.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]['full_summary'].iloc[0].items():
+#             spreaded_stats[szn]={}
+#             for h_a, shotdata in data.items():
+#                 tally = {}
+#                 for foot, datalist in shotdata.items():
+#                     tally[foot] = {'goals':[], 'misses':[]}
+#                     for shot in datalist:
+#                         if 'Goal' in shot:
+#                             tally[foot]['goals'].append(shot)
+#                         else:
+#                             tally[foot]['misses'].append(shot)
+#                 spreaded_stats[szn][h_a] = tally
+#         return spreaded_stats
+    
+#     def fetch_player_stats_against_teams(self, FPL_ID, TEAM_AGAINST_ID):
+#         player_match_data = self.understat_player_match_data[FPL_ID]
+#         player_match_df = pd.DataFrame(data=player_match_data)
+#         player_match_df['h_a'] = ''
+#         player_team = self.und_helper_fns.grab_team_USname_from_FPLID(self.fpl_helper_fns.grab_player_team_id(FPL_ID))
+#         for index, row in player_match_df.iterrows():
+#             season = row['season']
+#             team = player_team
+
+#             if team in row['h_team']:
+#                 player_match_df.at[index, 'h_a'] = 'h'
+#             elif team in row['a_team']:
+#                 player_match_df.at[index, 'h_a'] = 'a'
+#             else:
+#                 player_match_df.at[index, 'h_a'] = 'NA'
+#         team_dict = {}
+
+#         for index, row in player_match_df.iterrows():
+#             goals = int(row['goals'])
+#             if goals > 0:
+#                 if row['h_a'] == 'h':
+#                     team = row['a_team']
+#                     season = row['season']
+#                     if team not in team_dict:
+#                         team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+#                     if season not in team_dict[team]['seasons']:
+#                         team_dict[team]['h'] += goals
+#                         team_dict[team]['a'] += 0
+#                         team_dict[team]['seasons'][season] = {'h': goals, 'a': 0}
+#                     else:
+#                         team_dict[team]['h'] += goals
+#                         team_dict[team]['seasons'][season]['h'] += goals
+#                 elif row['h_a'] == 'a':
+#                     team = row['h_team']
+#                     season = row['season']
+#                     if team not in team_dict:
+#                         team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+#                     if season not in team_dict[team]['seasons']:
+#                         team_dict[team]['h'] += 0
+#                         team_dict[team]['a'] += goals
+#                         team_dict[team]['seasons'][season] = {'h': 0, 'a': goals}
+#                     else:
+#                         team_dict[team]['a'] += goals
+#                         team_dict[team]['seasons'][season]['a'] += goals
+#             else:
+#                 if row['h_a'] == 'h':
+#                     team = row['a_team']
+#                 elif row['h_a'] == 'a':
+#                     team = row['h_team']
+#                 else:
+#                     continue
+#                 season = row['season']
+#                 if team not in team_dict:
+#                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
+#                 if season not in team_dict[team]['seasons']:
+#                     team_dict[team]['seasons'][season] = {'h': 0, 'a': 0}
+
+#         def calculate_coefficient_of_variation(goals, h_a):
+#             h_goals = [data['h'] for data in goals.values()]
+#             a_goals = [data['a'] for data in goals.values()]
+#             if len(goals) <= 1 or sum(h_goals) + sum(a_goals) == 0:
+#                 return None
+#             if h_a == 'total': 
+#                 mean_h = statistics.mean(h_goals)
+#                 mean_a = statistics.mean(a_goals)
+#                 mean = (mean_h + mean_a) / 2
+#                 h_standard_deviation = statistics.stdev(h_goals)
+#                 a_standard_deviation = statistics.stdev(a_goals)
+#                 standard_deviation = (h_standard_deviation + a_standard_deviation) / 2
+#                 coefficient_of_variation = (standard_deviation / mean) * 100
+#             elif h_a == 'h':
+#                 if sum(h_goals) == 0:
+#                     return None
+#                 mean_h = statistics.mean(h_goals)
+#                 h_standard_deviation = statistics.stdev(h_goals)
+#                 coefficient_of_variation = (h_standard_deviation / mean_h) * 100
+#             elif h_a == 'a':
+#                 if sum(a_goals) == 0:
+#                     return None
+#                 mean_a = statistics.mean(a_goals)
+#                 a_standard_deviation = statistics.stdev(a_goals)
+#                 coefficient_of_variation = (a_standard_deviation / mean_a) * 100      
+#             return coefficient_of_variation
+
+#         def calculate_goal_avg(goals):
+
+#             h_goals = [data['h'] for data in goals.values()]
+#             a_goals = [data['a'] for data in goals.values()]
+
+#             avg_goals = (sum(h_goals) + sum(a_goals)) / (2*len(goals))
+#             return avg_goals
+
+#         output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
+#         output_df.columns = ['Team', 'h', 'a', 'season']
+
+#         def order_season_by_year(season):
+#             return {year: season[year] for year in sorted(season.keys())}
+
+#         def calc_matches(szns):
+#             return 2*len(szns)
+
+#         output_df['season'] = output_df['season'].apply(order_season_by_year)
+
+#         output_df['Variation Coefficient (H)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('h',))
+#         output_df['Variation Coefficient (A)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('a',))
+#         output_df['Variation Coefficient (Total)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('total',))
+
+#         output_df['Avg Goals/match'] = output_df['season'].apply(calculate_goal_avg)
+
+#         output_df['Matches'] = output_df['season'].apply(calc_matches)
+
+#         output_df.sort_values(by=['Team']).reset_index(drop=True)
+#         output_df.sort_values(by=['Variation Coefficient (Total)'])
+        
+#         output_df = output_df.loc[output_df['Team'] == self.und_helper_fns.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]
+        
+#         return output_df.to_dict()
