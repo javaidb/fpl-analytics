@@ -8,3 +8,6 @@ __pycache__/
 
 # Ignore dev notebooks folder used for experimental testing
 notebooks/development/
+
+# Ignore data file with personal info entered
+src/config/data.json

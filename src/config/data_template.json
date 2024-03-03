@@ -1,0 +1,11 @@
+{   
+    "fpl_id_data": {
+        "beacon_team_ids": [
+            "{{ REPLACE_ME_WITH_INT }}"
+        ],
+        "personal_team_id": "{{ REPLACE_ME_WITH_INT }}",
+        "personal_league_ids":  [
+            {"id": "{{ REPLACE_ME_WITH_INT }}", "symbol": "{{ REPLACE_ME_WITH_STR }}"}
+        ]
+    }   
+}
