@@ -44,7 +44,7 @@ class UnderstatProcessing:
         df = pd.DataFrame(data=dfdata,columns=['GW','xG','Team_Against'])
         return df
     
-    def fetch_all_team_expanded_stats(self,FPL_ID):
+    def fetch_all_team_expanded_stats(self):
         """
         Function returns all values for all games of this season
         """
@@ -54,8 +54,7 @@ class UnderstatProcessing:
             row['id'] = team_data['id']  # Add the team id
             row['title'] = team_data['title']  # Add the team title
             rows.append(row)
-        team_df = pd.DataFrame(rows)
-        return team_df
+        return rows
     
     def fetch_all_team_finite_stats(self,look_back):
         """
@@ -442,7 +441,7 @@ class UnderstatProcessing:
             except Exception as e:
                 print(f'{value}: {e}')
                 pass
-            rating_summary.append((value, self.fpl_helper_fnshelper_fns.grab_player_name(value), rating, other_ratings))
+            rating_summary.append((value, self.fpl_helper_fns.grab_player_name(value), rating, other_ratings))
 
         data = rating_summary
 
