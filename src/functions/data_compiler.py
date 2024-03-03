@@ -1,11 +1,10 @@
-# from src.config import config
-import pandas as pd
-from tqdm.notebook import tqdm_notebook
-from src.functions.helper_fns import calculate_mean_std_dev
-from collections import defaultdict, Counter
+from src.functions.helper_fns import calculate_mean_std_dev, progress_bar_update
 
-import asyncio
-import aiohttp
+from collections import defaultdict, Counter
+from tqdm.notebook import tqdm_notebook
+import pandas as pd
+import time
+
 import nest_asyncio
 nest_asyncio.apply()
 
@@ -35,7 +34,7 @@ class RawDataCompiler:
         return [gw_data for player_id in sorted(self.api_parser.player_ids) for gw_data in raw_data[player_id]['history']]
 
     def build_master_summary(self):
-        print("Building master summary...")
+        print("Building master summary ...")
         id_values = sorted(self.api_parser.player_ids)
         elem_summaries = self.grab_full_history()
         rel_elem_summaries = [x for x in elem_summaries if x['element'] in id_values]
@@ -45,7 +44,7 @@ class RawDataCompiler:
         
         #Compile from element summaries
         is_numeric = lambda s: s.replace('.', '', 1).isdigit() if isinstance(s, str) else isinstance(s, (int, float))
-        for entry in rel_elem_summaries:
+        for num_iter, entry in enumerate(rel_elem_summaries):
             player_id = entry['element']
             round_num = entry['round']
             entry_data = {k: v for k, v in entry.items() if k not in ['element', 'round']}

@@ -4,6 +4,7 @@ import math
 import difflib
 import pandas as pd
 import numpy as np
+import sys
 
 from collections import defaultdict
 
@@ -19,6 +20,13 @@ def calculate_mean_std_dev(data):
     st_dev = math.sqrt(var)
 
     return mean, st_dev
+
+def progress_bar_update(i, num_iter, complete=False):
+    if not complete:
+        sys.stdout.write(f'\rProcessing {i+1}/4 ' + '.' * (num_iter % 4) + '   ')
+    else:
+        sys.stdout.write('\rProcessing... \x1b[32m\u2714\x1b[0m\n')
+    sys.stdout.flush()
 
 class GeneralHelperFns:
     def __init__(self, api_parser, data_parser):
