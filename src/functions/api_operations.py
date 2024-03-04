@@ -14,9 +14,7 @@ from dateutil import parser
 
 import asyncio
 import aiohttp
-from tenacity import retry, stop_after_attempt, wait_fixed
-
-# from understatapi import UnderstatClient
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 from understat import Understat
 
 '''
@@ -223,9 +221,13 @@ class UnderstatAPIParser:
     def __init__(self, fpl_api_parser, fpl_helper_fns):
         self.fpl_api_parser = fpl_api_parser
         self.helper_fns = fpl_helper_fns
+
         self.understat_team_data = self._build_understat_team_data()
         self.understat_to_fpl_team_data = self._match_fpl_to_understat_teams()
+        self.understat_team_shot_data = self._build_understat_team_shot_data()
         self.understat_team_match_data = self._build_understat_team_match_data()
+
+        self.understat_player_data = self._build_understat_player_data()
         self.understat_to_fpl_player_data = self._match_fpl_to_understat_players()
         # self.understat_player_shot_data_raw = self._build_understat_player_shot_data()
 #         self.understat_player_shot_data_group = self._compile_understat_player_shot_data()
@@ -263,12 +265,38 @@ class UnderstatAPIParser:
             compiled_team_data[raw_team_data["id"]]['history'] = temp_data
         return compiled_team_data
 
+    def _build_understat_team_shot_data(self):
+        
+        async def fetch_team_shot_data(team_data, season="2024"):
+            async with aiohttp.ClientSession() as session:
+                understat = Understat(session)
+                player = await understat.get_team_stats(
+                    team_name = team_data["name"],
+                    season = season
+                )
+                return team_data["id"], player
+
+        async def fetch_all_team_shot_data(all_team_data):
+            tasks = [fetch_team_shot_data(team_data) for team_data in all_team_data]
+            results = {}
+            with tqdm_notebook(total=len(all_team_data), desc = "Fetching team shot data") as pbar:
+                for completed_task in asyncio.as_completed(tasks):
+                    team_id, result = await completed_task
+                    results[team_id] = result
+                    pbar.update(1)
+            return results
+        
+        understat_team_identifiers = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data.values()]
+        loop = asyncio.get_event_loop()
+        all_team_match_data = loop.run_until_complete(fetch_all_team_shot_data(understat_team_identifiers))
+        return all_team_match_data
+
     def _build_understat_team_match_data(self):
         
         async def fetch_team_match_data(team_data, season="2024"):
             async with aiohttp.ClientSession() as session:
                 understat = Understat(session)
-                player = await understat.get_team_stats(
+                player = await understat.get_team_results(
                     team_name = team_data["name"],
                     season = season
                 )
@@ -297,27 +325,23 @@ class UnderstatAPIParser:
         teams = self.fpl_api_parser.raw_data['teams']
         fpl_data = [{**{param_str: param_val for param_str, param_val in team.items() if param_str in ['id', 'name']}} for team in teams]
 
-        understat_nums_unsorted = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data.values()]
+        understat_nums_unsorted = [{
+            "id": int(x['id']), 
+            "name": x['title']
+        } 
+        for x in self.understat_team_data.values()]
         understat_data = sorted(understat_nums_unsorted, key=lambda x: x["name"])
 
-        return [{'fpl': d1, 'understat': d2} for d1, d2 in zip(fpl_data, understat_data)]
+        return [{
+            "fpl": d1, 
+            "understat": d2
+        } 
+        for d1, d2 in zip(fpl_data, understat_data)]
     
     def _match_fpl_to_understat_players(self):
 
-        async def fetch_league_players():
-            async with aiohttp.ClientSession() as session:
-                understat = Understat(session)
-                players = await understat.get_league_players(
-                    league_name='epl', 
-                    season='2023'
-                )
-                return players
-                
-        loop = asyncio.get_event_loop()
-        league_player_data = loop.run_until_complete(fetch_league_players())
-
         matched_data = []
-        for test_d in league_player_data:
+        for test_d in self.understat_player_data:
             team_name = test_d["team_title"].split(",")[-1] #Account for cases where player switched teams in PL
             fpl_team_id = next(x["fpl"]["id"] for x in iter(self.understat_to_fpl_team_data) if x["understat"]["name"] == team_name)
             matched_fpl_player_id = self.helper_fns.find_best_match(test_d["player_name"], fpl_team_id)
@@ -335,6 +359,20 @@ class UnderstatAPIParser:
 #================================================================================================================================================================
 #================================================================ BUILD UNDERSTAT PLAYER DATA ===================================================================
 #================================================================================================================================================================
+
+    def _build_understat_player_data(self):
+
+        async def fetch_league_players():
+            async with aiohttp.ClientSession() as session:
+                understat = Understat(session)
+                players = await understat.get_league_players(
+                    league_name='epl', 
+                    season='2023'
+                )
+                return players
+                
+        loop = asyncio.get_event_loop()
+        return loop.run_until_complete(fetch_league_players())
 
     def _build_understat_player_shot_data(self):
 
