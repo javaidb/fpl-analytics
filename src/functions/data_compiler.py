@@ -1,10 +1,7 @@
 from src.functions.helper_fns import calculate_mean_std_dev, progress_bar_update
 
 from collections import defaultdict, Counter
-from tqdm.notebook import tqdm_notebook
 import pandas as pd
-import time
-
 import nest_asyncio
 nest_asyncio.apply()
 
@@ -13,12 +10,10 @@ class RawDataCompiler:
         self.api_parser = api_parser
         self.raw_data = api_parser.raw_data
         self.master_summary = self.build_master_summary()
-        # self.total_summary = None
         self.players = pd.json_normalize(self.raw_data['elements'])
         self.teams = pd.json_normalize(self.raw_data['teams'])
         self.positions = pd.json_normalize(self.raw_data['element_types'])
         self.team_info = self.get_team_info()
-        # self.total_summary = asyncio.run(self.compile_dataframes())
         self.league_data = self.initialize_league_data()
     
     def get_team_info(self):

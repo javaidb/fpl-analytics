@@ -1,15 +1,10 @@
 from prettytable import PrettyTable
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 from itertools import cycle
 import numpy as np
 import textwrap
 from PIL import Image
 from collections import defaultdict
-import re
-# from dash import dash_table
-# from dash_table import DataTable
 import statistics
 from src.config import config
 
@@ -21,62 +16,6 @@ class VisualizationOperations:
         self.data_analytics = data_analytics
         self.helper_fns = helper_fns
         self.output_league_stats_across_gameweeks()
-
-    #========================== Plot data ==========================
-
-
-    # def plot_multi_stats(self,param,dataset,values,remove_FPL15 = False):
-    #     df = self.data_parser.total_summary.copy()
-    #     if param not in df.columns:
-    #         print(f"Incorrect 'param' format, should be one of: {list(df.columns)}")
-    #         return
-    #     if dataset in ['specialized','myteam']:
-    #         if dataset == 'specialized':
-    #             pos = values[0]
-    #             lookback = values[1]
-    #             num_players = values[2]
-    #             df = df.loc[df['position'] == pos]
-    #             if remove_FPL15:
-    #                 df = df.loc[~df['id_player'].isin(self.data_analytics.optimized_personal_team_df.id.to_list())]
-    #         elif dataset == 'myteam':
-    #             pos = values[0]
-    #             lookback = 6
-    #             df = df.loc[(df['id_player'].isin(self.data_analytics.optimized_personal_team_df.id.to_list())) & (df['position'] == pos)]
-    #             num_players = len(df)
-    #     def average_last(lst):
-    #         return sum(lst[-lookback:]) / lookback
-    #     df[f"{param}_avg"] = df.apply(lambda x: average_last(x[param]), axis = 1)
-    #     df_sorted = df.sort_values(by=f"{param}_avg", ascending=False).head(num_players)
-    #     data = df_sorted[['id_player','player','round',param,f"{param}_avg"]]
-    #     data = data.reset_index(drop = True)
-    #     num_cols = min(7,len(data))
-    #     num_rows = (len(data) + 2) // num_cols
-    #     fig = make_subplots(rows=num_rows, cols=num_cols, subplot_titles=data['player'].tolist())
-    #     for i, d in data.iterrows():
-    #         row = i // num_cols + 1
-    #         col = i % num_cols + 1
-    #         color = self.helper_fns.fetch_single_team_color(self.helper_fns.grab_player_team_id(d['id_player']))
-    #         team = self.helper_fns.grab_player_team(d['id_player'])
-    #         fig.add_trace(go.Scatter(x=d['round'], y=d[param], name = team, mode="markers+lines", line=dict(color=color), marker=dict(color=color)), row=row, col=col)
-    #         fig.update_xaxes(title_text='GW', row=row, col=col)
-    #         if param == 'history':
-    #             fig.add_hrect(y0=-1, y1=4, line_width=0, fillcolor="red", opacity=0.2, row=row, col=col)
-    #             fig.add_hrect(y0=4, y1=6, line_width=0, fillcolor="yellow", opacity=0.2, row=row, col=col)
-    #             fig.add_hrect(y0=6, y1=9, line_width=0, fillcolor="green", opacity=0.2, row=row, col=col)
-    #             fig.add_hrect(y0=9, y1=max(d[param])+2, line_width=0, fillcolor="blue", opacity=0.2, row=row, col=col)
-    #         else:
-    #             fig.add_hline(y=d[f"{param}_avg"], line_dash='dot', line_width=2, line_color='black', row=row, col=col)
-    #         fig.update_xaxes(nticks = 6, row=row, col=col)
-    #         fig.update_yaxes(nticks = 6, row=row, col=col)
-    #     fig.update_layout(height=350*(num_rows), width=350*num_cols)
-    #     fig.update_layout(title=f'{param} vs GW',showlegend=False)
-    #     fig.update_xaxes(title='GW')
-    #     fig.update_yaxes(title=param)
-    #     fig.show()
-    #     return
-
-    # def plot_individual_stats(self,player_name,paramlist):
-    #     return
 
     def grab_ownership_count_str(self, player_id: int, league_name, format_color):
         compiled_ownership = next(x["summary"] for x in iter(self.data_parser.league_data) if x["name"] == str(league_name))
@@ -97,7 +36,6 @@ class VisualizationOperations:
 #========================================================================================================================================================================================
 
     def grab_ascii_bins(self, bin_length, ascii_purpose, return_sequence = 'ansi', custom_color_scheme = None):
-        # color_code = '\033[1;30;2m'  # muted grey
         color_map = {
             'red': {'rgb': (1, 0, 0), 'ansi': '\033[1;31m'},
             'green': {'rgb': (0, 1, 0), 'ansi': '\033[1;32m'},
@@ -143,7 +81,6 @@ class VisualizationOperations:
     def grab_gradient_ascii_from_param(self, input_val, param_bins, ascii_bins):
         ordered_bins = tuple(sorted(param_bins))
         ind_lower, ind_upper = (float('-inf'), 0) if input_val < ordered_bins[0] else (len(ordered_bins) - 1, float('inf')) if input_val >= ordered_bins[-1] else next((i, i + 1) for i in range(len(ordered_bins) - 1) if ordered_bins[i] <= input_val < ordered_bins[i + 1])
-    #     print(f'{ind_lower} {ind_upper}')
         if ind_lower == -np.inf:
             weight = 0
             ind_lower, ind_upper = ind_upper,ind_upper+1
@@ -154,7 +91,6 @@ class VisualizationOperations:
             range_upper = param_bins[ind_upper]
             range_lower = param_bins[ind_lower]
             weight = (input_val - range_lower) / (range_upper - range_lower)
-    #     print(f'{ind_lower} {ind_upper} {ascii_bins}')
         ascii_upper = ascii_bins[ind_upper]
         ascii_lower = ascii_bins[ind_lower]
         return "#" + "".join("%02x" % round(c * 255) for c in self.calc_rgb_from_colors_n_weights(ascii_lower, ascii_upper, weight))
@@ -163,7 +99,6 @@ class VisualizationOperations:
         param_bins = self.helper_fns.grab_bins_from_param(input_param)
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'gradient', 'rgb', custom_scheme)
-    #     print(f'{input_vals} {param_bins} {ascii_bins}')
         val_str = ""
         for val in input_vals:
             if param_bins is not None:
@@ -191,7 +126,6 @@ class VisualizationOperations:
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'static', 'ansi', custom_scheme)
         val_str = ""
-    #     print(input_vals)
         for val in input_vals:
             if param_bins is not None:
                 color_code = self.grab_static_ascii_from_param(val, param_bins, ascii_bins)
@@ -319,7 +253,6 @@ class VisualizationOperations:
             temp_dict = defaultdict(lambda: defaultdict(list))
             for k,v in player_data.items():
                 temp_dict[k] = self.transform_data_to_str_pt(v, k)
-    #             print(f'{k}: {temp_dict[k]}\n')
             transformed_player_data.append({k: v for k,v in temp_dict.items()})
 
         return [{k: v for k, v in d.items() if v is not None} for d in transformed_player_data]
@@ -334,7 +267,6 @@ class VisualizationOperations:
 
         cols_of_interest = ['pos_singular_name_short', 'team_short_name', 'web_name', 'value', 'opponent_team', 'total_points', 'bps', 'ict_index', 'expected_goal_involvements', 'minutes']
 
-    #     table_cols = ['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆₁ₖ','☆₁₀ₖ','☆₁₀₀ₖ','☆','Upcoming Fixtures']
         table_cols = ['Position', 'Team', 'Player', 'Cost', 'Past FDRs', 'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes']
         for league_info in self.data_parser.league_data:
             table_cols += [league_info["symbol"]]
@@ -360,75 +292,11 @@ class VisualizationOperations:
 
     def display_tabular_summary(self):
         replacements = self.data_analytics.replacement_players
-        beacon_picks = list(self.data_analytics.beacon_effective_ownership.keys())
+        beacon_picks = list(self.data_parser.beacon_effective_ownership.keys())
         values = list(set(replacements).union(set(beacon_picks)))
         values = [x for x in values if x not in list(self.data_analytics.personal_team_data.keys())]
         self.player_summary(player_ids=values)
         return
-
-    # def replacement_summary(self, net_limit = True):
-    #     net_spend_limit = round(self.api_parser.personal_fpl_raw_data['entry_history']['bank']/10, 2)
-    #     tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','Team','Past FDRs','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
-    #     if net_limit:
-    #         nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
-    #     else:
-    #         nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement']]
-    #     for key in self.my_dict:
-    #         FPL15_player_name = key
-    #         comp_dict = self.my_dict[key]
-    #         replacements = comp_dict['replacement']
-    #         sorted_replacements = sorted(replacements, key=lambda x: x[0]['history'][0], reverse=True)
-    #         count = 0
-    #         for r in sorted_replacements:
-    #             position = comp_dict['stats']['position']
-    #             name = r[0]['name']
-    #             team_id = self.helper_fns.grab_player_team_id(r[0]['id'])
-    #             net = r[-1]
-    #             if net_limit:
-    #                 cond = (net <= net_spend_limit)
-    #             else:
-    #                 cond = True
-    #             if cond:
-    #                 if count == 0:
-    #                     tab.add_row(['']*13)
-    #                     FPL15_ICT = self.compile_static_color_str(comp_dict['stats']['ict'],'ict')
-    #                     FPL15_xGI = self.compile_static_color_str(comp_dict['stats']['xGI'],'xGI')
-    #                     if position == 'DEF':
-    #                         FPL15_xGC = round(comp_dict['stats']['xGC'][0],2)
-    #                     FPL15_pos = position
-    #                 else:
-    #                     FPL15_player_name, FPL15_pos, FPL15_ICT, FPL15_xGI, FPL15_xGC = '','','','',''
-    #                 count += 1
-    #                 if position == 'DEF':
-    #                     tab.add_row([FPL15_player_name,
-    #                                  FPL15_pos,
-    #                                  FPL15_ICT,
-    #                                  FPL15_xGI,
-    #                                  FPL15_xGC,
-    #                                  name,
-    #                                  self.grab_color_from_team_str(self.helper_fns.grab_team_name_short(team_id)),
-    #                                  self.get_past_fixtures_colors(team_id,6),
-    #                                  self.compile_static_color_str(r[0]['ict'],'ict'),
-    #                                  self.compile_static_color_str(r[0]['xGI'],'xGI'),
-    #                                  round(r[0]['xGC'][0],2),
-    #                                  self.compile_grad_color_str(net,min(nets),0,max(nets)),
-    #                                  self.get_colored_fixtures(self.helper_fns.grab_player_team_id(r[0]['id']),5)])
-    #                 else:
-    #                     tab.add_row([FPL15_player_name,
-    #                                  FPL15_pos,
-    #                                  FPL15_ICT,
-    #                                  FPL15_xGI,
-    #                                  '-',
-    #                                  name,
-    #                                  self.grab_color_from_team_str(self.helper_fns.grab_team_name_short(team_id)),
-    #                                  self.get_past_fixtures_colors(team_id,6),
-    #                                  self.compile_static_color_str(r[0]['ict'],'ict'),
-    #                                  self.compile_static_color_str(r[0]['xGI'],'xGI'),
-    #                                  '-',
-    #                                  self.compile_grad_color_str(net,min(nets),0,max(nets)),
-    #                                  self.get_colored_fixtures(self.helper_fns.grab_player_team_id(r[0]['id']),5)])
-    #     tab.align["Upcoming Fixtures"] = "l"
-    #     print(tab)
 
 #========================================================================================================================================================================================
 #============================================================== FIGURE EXPORTS OUTLINING LEAGUE RANK/POINT SPREAD ACROSS GWS ============================================================
@@ -563,6 +431,3 @@ class VisualizationOperations:
         
         for key in ['rank_history', 'entry_history']:
             self._process_plot_functions(plt, plot_settings, total_player_data, custom_protocol=key)
-
-#========================================================================================================================================================================================
-#========================================================================================================================================================================================

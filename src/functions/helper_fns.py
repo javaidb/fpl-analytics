@@ -1,18 +1,11 @@
-import os
-import ast
 import math
 import difflib
-import pandas as pd
 import numpy as np
 import sys
 
 from collections import defaultdict
 
 import asyncio
-
-# from understatapi import UnderstatClient
-# from fuzzywuzzy import fuzz
-# from fuzzywuzzy import process
 
 def calculate_mean_std_dev(data):
     mean = sum(data) / len(data)
@@ -56,12 +49,9 @@ class GeneralHelperFns:
 
         return sliced_player_data
     
-    # def grab_upcoming_fixtures(self, id_values: list):
-    #     raw_data = self.api_parser.full_element_summary
-    #     return {player_id: gw_data for player_id in sorted(self.api_parser.player_ids) for gw_data in raw_data[player_id]['fixtures']}
-
-
-    #========================== General Parsing ==========================
+#================================================================================================================================================================
+#=================================================================== PARAMETER GRABBING =========================================================================
+#================================================================================================================================================================
 
     def grab_player_name(self, idx):
         return self.compile_player_data([idx])[idx]['web_name']
@@ -91,14 +81,6 @@ class GeneralHelperFns:
      
     def grab_player_bps(self, idx, include_gws=False):
         return [param_val if not include_gws else (gw, param_val) for gw, param_val in self.compile_player_data([idx])[idx]['bps']]
-     
-    # def grab_player_full90s(self, idx):
-    #     name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fulltime']
-    #     return name.values[-1]
-
-    # def grab_player_full60s(self, idx):
-    #     name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fullhour']
-    #     return name.values[-1]
 
     def grab_team_id(self, team_name):
         return next(x['id'] for x in self.api_parser.raw_data['teams'] if x['name'] == team_name)
@@ -154,11 +136,12 @@ class GeneralHelperFns:
             return (3.8, 7.0, 13.0)
         else:
             return None
-
-    #========================== Custom Operations ==========================
+    
+#================================================================================================================================================================
+#=================================================================== CUSTOM FUNCTIONS ===========================================================================
+#================================================================================================================================================================
     
     def compile_fdr_data(self):
-#       #========================== Compile FDRs from team_info ==========================
         init_id = 1
         fdr_data = {}
         while init_id < len(self.api_parser.player_ids):
@@ -231,7 +214,6 @@ class GeneralHelperFns:
         dict_list = [{**d, 'concat_name': f"{d['first_name']} {d['second_name']}"} for d in self.unique_player_data]
         if input_team_id is not None:
             dict_list = [x for x in dict_list if x["team"] == input_team_id]
-        # col_names = ['web_name', 'second_name', 'first_name', 'concat_name']
         col_names = ['web_name', 'concat_name']
         for d in dict_list:
             summary = d.copy()
@@ -263,8 +245,10 @@ class GeneralHelperFns:
         elif len(best_matches) == 0:
             return None
     
-    #========================== User Functions ==========================
-    
+#================================================================================================================================================================
+#=================================================================== USER INFO FETCHING =========================================================================
+#================================================================================================================================================================
+         
     def get_player_points_history(self, user_id):
         user_data = self.api_parser.fetch_data_from_api(f'entry/{user_id}/history/')
         points_history = []
@@ -296,220 +280,6 @@ class GeneralHelperFns:
             user['rank_history'] = rank_history
         return users, last_updated_time, league_name
     
-    #========================== Visualization ==========================
-
-    def fetch_single_team_color(team_id):
-        team_colors = {
-            1: '#DE0202',   # Arsenal
-            2: '#75AADB',   # Aston Villa
-            3: '#DA291C',   # Bournemouth
-            4: '#FDB913',   # Brentford
-            5: '#0057B8',   # Brighton & Hove Albion
-            6: '#FFD700',   #Burnley
-            7: '#034694',   # Chelsea
-            8: '#1B458F',   # Crystal Palace
-            9: '#003399',   # Everton
-            10: '#F5A646',  # Fulham
-            11: '#C8102E',  # Liverpool
-            12: '#0053A0',  # Luton Town
-            13: '#6CABDD',  # Manchester City
-            14: '#DA291C',  # Manchester United
-            15: '#241F20',  # Newcastle United
-            16: '#BD1E2C',  # Nottingham Forest
-            17: '#D71920',  # Sheffield United
-            18: '#001C58',  # Tottenham Hotspur
-            19: '#7A263A',  # West Ham United
-            20: '#FDB913'   # Wolverhampton Wanderers
-        }
-        return team_colors[team_id]
-    
-
-    #========================== Print Statements ==========================
-
-    def team_visualizer(self, team_ids:list):
-        if len(team_ids) != 15:
-            print("Need 15 entries for list!")
-            return
-        team_dict = {}
-        for idx in team_ids:
-            pos = self.grab_player_pos(idx)
-            if pos not in team_dict:
-                team_dict[pos]=[]
-            name = self.grab_player_name(idx)
-            team_dict[pos].append(name)
-        gkps = team_dict['GKP']
-        defs = team_dict['DEF']
-        mids = team_dict['MID']
-        fwds = team_dict['FWD']
-        print(f'\n                   {gkps[0]}   {gkps[1]}\n')
-        print(f'   {defs[0]}   {defs[1]}   {defs[2]}   {defs[3]}   {defs[4]}\n')
-        print(f'   {mids[0]}   {mids[1]}   {mids[2]}   {mids[3]}   {mids[4]}\n')
-        print(f'               {fwds[0]}   {fwds[1]}   {fwds[2]}\n')
-        return team_dict
-    
-    def alert_players_with_blanks_dgws(self, input_fpl_team: pd.DataFrame()):
-        teams = list(input_fpl_team.team.unique())
-        ids = [self.grab_team_id(x) for x in teams]
-        bgws_adj = {k: v for k, v in self.blanks.items() if k > self.api_parser.latest_gw}
-        dgws_adj = {k: v for k, v in self.dgws.items() if k > self.api_parser.latest_gw}
-        if bgws_adj:
-            print('\n------------- UPCOMING BLANKS -------------')
-            for gw,teams in bgws_adj.items():
-                print(f'>> Gameweek {gw}')
-                matches = [self.grab_team_name(x) for x in ids if x in teams]
-                players = list(input_fpl_team.loc[input_fpl_team['team'].isin(matches)]['player'])
-                if len(players) > 4:
-                    print(f"Suggested to remove {len(players)- 4} player(s) in anticipation of blanks:")
-                [print(f' - {player}') for player in players]
-        if dgws_adj:
-            print('\n------------- UPCOMING DGWS -------------')
-            for gw,teams in dgws_adj.items():
-                print(f'>> Gameweek {gw}')
-                matches = [self.grab_team_name(x) for x in ids if x in teams]
-                players = list(input_fpl_team.loc[input_fpl_team['team'].isin(matches)]['player'])
-                [print(f' - {player}') for player in players]
-    
-    def display_beacon_changes_this_gw(self):
-            output_file_path = os.path.abspath("../../stats/beacon_team_history.txt")
-            file = open(output_file_path, "r")
-            contents = file.read()
-            dictionary = ast.literal_eval(contents)
-            most_recent_gw = list(dictionary.keys())[-1]
-            prev_gw = list(dictionary.keys())[-2]
-            change_dict = {}
-            for team_id in dictionary[most_recent_gw].keys():
-                name = dictionary[most_recent_gw][team_id]['name']
-                t2 = dictionary[most_recent_gw][team_id]['team']
-                try:
-                    t1 = dictionary[prev_gw][team_id]['team']
-                    pre_diff = list(set(t1) - set(t2))
-                    post_diff = list(set(t2) - set(t1))
-                    change_dict[team_id] = {'name':name,
-                                            'out':pre_diff,
-                                            'in':post_diff}
-                except: pass
-            file.close()
-            chng = 0
-            for idx in change_dict:
-                name = change_dict[idx]['name']
-                predifs = change_dict[idx]['out']
-                postdifs = change_dict[idx]['in']
-                changes = {}
-                for preid in predifs:
-                    pos = self.grab_player_pos(preid)
-                    if pos not in changes.keys():
-                        changes[pos] = {}
-                    if '0' not in changes[pos].keys():
-                        changes[pos]['0'] = []
-                    changes[pos]['0'].append(preid)
-                for postid in postdifs:
-                    pos = self.grab_player_pos(postid)
-                    if pos not in changes.keys():
-                        changes[pos] = {}
-                    if '1' not in changes[pos].keys():
-                        changes[pos]['1'] = []
-                    changes[pos]['1'].append(postid)
-                if not predifs and not postdifs:
-                    continue
-                else:
-                    chng = 1
-                    print('\n--------------------')
-                    print(f'{name}\n')
-                    for pos in changes.keys():
-                        a = changes[pos]['0']
-                        b = changes[pos]['1']
-                        for i,x in enumerate(a):
-                            b4 = self.grab_player_name(x)
-                            b5 = self.grab_player_name(b[i])
-                            print(f'{b4} ({pos}) -> {b5} ({pos})')
-            if chng == 0 :
-                print('Managers have made no changes')
-            return
-
-    def display_beacon_movements_this_gw(self, ranged=None):
-        if ranged and ranged != 'full':
-            print('Entry must be empty or \"full\"!')
-            return
-        output_file_path = os.path.abspath("../../stats/beacon_team_history.txt")
-        file = open(output_file_path, "r")
-        contents = file.read()
-        dictionary = ast.literal_eval(contents)
-        recorded_gws = list(dictionary.keys())
-        change_dict = {}
-        if not ranged:
-            gwrange = range(len(recorded_gws)-1,len(recorded_gws))
-        elif ranged == 'full':
-            gwrange = range(1,len(recorded_gws))
-        for gw_identifier in gwrange:
-            for team_id in dictionary[recorded_gws[gw_identifier]].keys():
-                name = dictionary[recorded_gws[gw_identifier]][team_id]['name']
-                t2 = dictionary[recorded_gws[gw_identifier]][team_id]['team']
-                try:
-                    t1 = dictionary[recorded_gws[gw_identifier-1]][team_id]['team']
-                    pre_diff = list(set(t1) - set(t2))
-                    post_diff = list(set(t2) - set(t1))
-                    if team_id not in change_dict.keys():
-                        change_dict[team_id] = {'name':name,
-                                                'out':[],
-                                                'in':[]}
-                    change_dict[team_id]['out'] = change_dict[team_id]['out'] + pre_diff
-                    comp1 = [x for x in change_dict[team_id]['out'] if x in change_dict[team_id]['in']]
-                    change_dict[team_id]['in'] = change_dict[team_id]['in'] + post_diff
-                    comp2 = [x for x in change_dict[team_id]['in'] if x in change_dict[team_id]['out']]
-                    if comp1:
-                        change_dict[team_id]['in'] = [x for x in change_dict[team_id]['in'] if x not in comp1]
-                    if comp2:
-                        change_dict[team_id]['out'] = [x for x in change_dict[team_id]['out'] if x not in comp2]
-                except: pass
-        tally_dict = {'OUT':{},
-                        'IN':{}}
-        entries = len(change_dict.keys())
-        for team_id in change_dict.keys():
-            outs = change_dict[team_id]['out']
-            ins = change_dict[team_id]['in']
-            for o in outs:
-                if o not in tally_dict['OUT']:
-                    tally_dict['OUT'][o] = 0
-                tally_dict['OUT'][o] += 1
-            for i in ins:
-                if i not in tally_dict['IN']:
-                    tally_dict['IN'][i] = 0
-                tally_dict['IN'][i] += 1
-        outlist = sorted(tally_dict['OUT'].items(), key=lambda x:x[1], reverse=True)
-        inlist = sorted(tally_dict['IN'].items(), key=lambda x:x[1], reverse=True)
-        print('\n---------- OUT -----------\n')
-        for a,b in outlist:
-            print(f'{self.grab_player_name(a)} -- {b}/{entries}')
-        print('\n---------- IN -----------\n')
-        for c,d in inlist:
-            print(f'{self.grab_player_name(c)} -- {d}/{entries}')
-        return
-
-    def display_beacon_tallies_this_gw(self, player_ids: list):
-        fplcounter = {player_id: 0 for player_id in player_ids}
-        output_file_path = os.path.abspath("../../stats/beacon_team_history.txt")
-        file = open(output_file_path, "r")
-        contents = file.read()
-        dictionary = ast.literal_eval(contents)
-        recorded_gws = list(dictionary.keys())
-        gw_identifier = len(recorded_gws)-1
-        for team_id in dictionary[recorded_gws[gw_identifier]].keys():
-            genlist = dictionary[recorded_gws[gw_identifier]][team_id]['team']
-            for ids in genlist:
-                if ids in fplcounter.keys():
-                    fplcounter[ids] += 1
-        print('\n')
-        for key in fplcounter.keys():
-            value = fplcounter[key]
-            entries = len(dictionary[recorded_gws[gw_identifier]].keys())
-            if int(value) == 0:
-                tier = '\033[33m'
-            elif int(value) >= 7:
-                tier = '\033[36m'
-            else:
-                tier = ''
-            print(f'{self.helper_fns.grab_player_name(key)} -- {tier}{value}\033[0m / {entries}')
-        return
     
 class UnderStatHelperFns:
     def __init__(self, understat_fetcher):
@@ -575,175 +345,3 @@ class UnderStatHelperFns:
                 else: continue
             compiled_team_data.append(temp_data)
         return compiled_team_data
-
-
-#     def fetch_player_shots_against_teams(self, fpl_player_id, TEAM_AGAINST_ID):
-#         player_shot_data = self.understat_player_shot_data_group[fpl_player_id]
-#         df = pd.DataFrame(data=player_shot_data)
-#         team_dict = {}
-#         for _, row in df.iterrows():
-#             season = row['season']
-#             result  = row['result']
-#             shot_type = row['shotType']
-#             situation = row['situation']
-#             if row['h_a'] == 'h':
-#                 team = row['a_team']
-#                 if team not in team_dict:
-#                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
-#                 if season not in team_dict[team]['seasons']:
-#                     team_dict[team]['seasons'][season] = {'h': {}, 'a': {}}
-#                 if shot_type not in team_dict[team]['seasons'][season]['h'].keys():
-#                     team_dict[team]['seasons'][season]['h'][shot_type] = []
-#                 team_dict[team]['seasons'][season]['h'][shot_type].append((situation, result))
-#                 if result == 'Goal':
-#                     team_dict[team]['h'] += 1
-#             elif row['h_a'] == 'a':
-#                 team = row['h_team']
-#                 if team not in team_dict:
-#                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
-#                 if season not in team_dict[team]['seasons']:
-#                     team_dict[team]['seasons'][season] = {'h': {}, 'a': {}}
-#                 if shot_type not in team_dict[team]['seasons'][season]['a'].keys():
-#                     team_dict[team]['seasons'][season]['a'][shot_type] = []
-#                 team_dict[team]['seasons'][season]['a'][shot_type].append((situation, result))
-#                 if result == 'Goal':
-#                     team_dict[team]['a'] += 1
-
-#         output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
-#         output_df.columns = ['Team', 'h', 'a', 'full_summary']
-#         def order_season_by_year(season):
-#             return {year: season[year] for year in sorted(season.keys())}
-#         output_df['full_summary'] = output_df['full_summary'].apply(order_season_by_year)
-#         output_df = output_df.sort_values(by=['Team']).reset_index(drop=True)
-#         spreaded_stats = {}
-#         for szn,data in output_df.loc[output_df['Team'] == self.und_helper_fns.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]['full_summary'].iloc[0].items():
-#             spreaded_stats[szn]={}
-#             for h_a, shotdata in data.items():
-#                 tally = {}
-#                 for foot, datalist in shotdata.items():
-#                     tally[foot] = {'goals':[], 'misses':[]}
-#                     for shot in datalist:
-#                         if 'Goal' in shot:
-#                             tally[foot]['goals'].append(shot)
-#                         else:
-#                             tally[foot]['misses'].append(shot)
-#                 spreaded_stats[szn][h_a] = tally
-#         return spreaded_stats
-    
-#     def fetch_player_stats_against_teams(self, FPL_ID, TEAM_AGAINST_ID):
-#         player_match_data = self.understat_player_match_data[FPL_ID]
-#         player_match_df = pd.DataFrame(data=player_match_data)
-#         player_match_df['h_a'] = ''
-#         player_team = self.und_helper_fns.grab_team_USname_from_FPLID(self.fpl_helper_fns.grab_player_team_id(FPL_ID))
-#         for index, row in player_match_df.iterrows():
-#             season = row['season']
-#             team = player_team
-
-#             if team in row['h_team']:
-#                 player_match_df.at[index, 'h_a'] = 'h'
-#             elif team in row['a_team']:
-#                 player_match_df.at[index, 'h_a'] = 'a'
-#             else:
-#                 player_match_df.at[index, 'h_a'] = 'NA'
-#         team_dict = {}
-
-#         for index, row in player_match_df.iterrows():
-#             goals = int(row['goals'])
-#             if goals > 0:
-#                 if row['h_a'] == 'h':
-#                     team = row['a_team']
-#                     season = row['season']
-#                     if team not in team_dict:
-#                         team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
-#                     if season not in team_dict[team]['seasons']:
-#                         team_dict[team]['h'] += goals
-#                         team_dict[team]['a'] += 0
-#                         team_dict[team]['seasons'][season] = {'h': goals, 'a': 0}
-#                     else:
-#                         team_dict[team]['h'] += goals
-#                         team_dict[team]['seasons'][season]['h'] += goals
-#                 elif row['h_a'] == 'a':
-#                     team = row['h_team']
-#                     season = row['season']
-#                     if team not in team_dict:
-#                         team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
-#                     if season not in team_dict[team]['seasons']:
-#                         team_dict[team]['h'] += 0
-#                         team_dict[team]['a'] += goals
-#                         team_dict[team]['seasons'][season] = {'h': 0, 'a': goals}
-#                     else:
-#                         team_dict[team]['a'] += goals
-#                         team_dict[team]['seasons'][season]['a'] += goals
-#             else:
-#                 if row['h_a'] == 'h':
-#                     team = row['a_team']
-#                 elif row['h_a'] == 'a':
-#                     team = row['h_team']
-#                 else:
-#                     continue
-#                 season = row['season']
-#                 if team not in team_dict:
-#                     team_dict[team] = {'h': 0, 'a': 0, 'seasons': {}}
-#                 if season not in team_dict[team]['seasons']:
-#                     team_dict[team]['seasons'][season] = {'h': 0, 'a': 0}
-
-#         def calculate_coefficient_of_variation(goals, h_a):
-#             h_goals = [data['h'] for data in goals.values()]
-#             a_goals = [data['a'] for data in goals.values()]
-#             if len(goals) <= 1 or sum(h_goals) + sum(a_goals) == 0:
-#                 return None
-#             if h_a == 'total': 
-#                 mean_h = statistics.mean(h_goals)
-#                 mean_a = statistics.mean(a_goals)
-#                 mean = (mean_h + mean_a) / 2
-#                 h_standard_deviation = statistics.stdev(h_goals)
-#                 a_standard_deviation = statistics.stdev(a_goals)
-#                 standard_deviation = (h_standard_deviation + a_standard_deviation) / 2
-#                 coefficient_of_variation = (standard_deviation / mean) * 100
-#             elif h_a == 'h':
-#                 if sum(h_goals) == 0:
-#                     return None
-#                 mean_h = statistics.mean(h_goals)
-#                 h_standard_deviation = statistics.stdev(h_goals)
-#                 coefficient_of_variation = (h_standard_deviation / mean_h) * 100
-#             elif h_a == 'a':
-#                 if sum(a_goals) == 0:
-#                     return None
-#                 mean_a = statistics.mean(a_goals)
-#                 a_standard_deviation = statistics.stdev(a_goals)
-#                 coefficient_of_variation = (a_standard_deviation / mean_a) * 100      
-#             return coefficient_of_variation
-
-#         def calculate_goal_avg(goals):
-
-#             h_goals = [data['h'] for data in goals.values()]
-#             a_goals = [data['a'] for data in goals.values()]
-
-#             avg_goals = (sum(h_goals) + sum(a_goals)) / (2*len(goals))
-#             return avg_goals
-
-#         output_df = pd.DataFrame.from_dict(team_dict, orient='index').reset_index()
-#         output_df.columns = ['Team', 'h', 'a', 'season']
-
-#         def order_season_by_year(season):
-#             return {year: season[year] for year in sorted(season.keys())}
-
-#         def calc_matches(szns):
-#             return 2*len(szns)
-
-#         output_df['season'] = output_df['season'].apply(order_season_by_year)
-
-#         output_df['Variation Coefficient (H)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('h',))
-#         output_df['Variation Coefficient (A)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('a',))
-#         output_df['Variation Coefficient (Total)'] = output_df['season'].apply(calculate_coefficient_of_variation, args=('total',))
-
-#         output_df['Avg Goals/match'] = output_df['season'].apply(calculate_goal_avg)
-
-#         output_df['Matches'] = output_df['season'].apply(calc_matches)
-
-#         output_df.sort_values(by=['Team']).reset_index(drop=True)
-#         output_df.sort_values(by=['Variation Coefficient (Total)'])
-        
-#         output_df = output_df.loc[output_df['Team'] == self.und_helper_fns.grab_team_USname_from_FPLID(TEAM_AGAINST_ID)]
-        
-#         return output_df.to_dict()

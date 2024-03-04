@@ -45,10 +45,6 @@ class FPLAPIParser:
         response = requests.get(url)
         response.raise_for_status()
         return response.json()
-        # async with aiohttp.ClientSession() as session:
-        #     async with session.get(url) as response:
-        #         data = await response.json()
-        #         return data
     
     def get_config_data(self):
         config_data_path = os.path.abspath('../src/config/data.json')
@@ -141,18 +137,14 @@ class FPLAPIParser:
         if session:
             headers = {'Accept': 'application/json'}
             async with session.get(f'{config.BASE_URL}/element-summary/{player_id}/', headers=headers) as resp:
-                #Status code implying success
-                if resp.status == 200:
+                if resp.status == 200: #Status code implying success
                     player_data = await resp.json()
                     return player_data
-                elif resp.status == 429:
-                    # Rate limit exceeded, implement backoff
+                elif resp.status == 429: # Rate limit exceeded, implement backoff
                     retry_after = int(resp.headers.get('Retry-After', 5))  # Default to 5 seconds
-                    # print(f"Rate limit exceeded. Retrying after {retry_after} seconds.")
                     await asyncio.sleep(retry_after)
                     return await self.fetch_element_summaries(player_id, session)
-                else:
-                    # Handle non-200 status code
+                else: # Handle non-200 status code
                     print(f"Error: {resp.status} - {resp.reason}")
                     return None
         else:
@@ -182,8 +174,6 @@ class FPLAPIParser:
         asyncio.run(fetch_all_summaries())
         return full_element_summary
     
-##########################################################################################################################
-
     def compile_rivals_team(self, team_ids: list):
         rival_ids_data = {}
         for team_id in team_ids:
@@ -229,9 +219,6 @@ class UnderstatAPIParser:
 
         self.understat_player_data = self._build_understat_player_data()
         self.understat_to_fpl_player_data = self._match_fpl_to_understat_players()
-        # self.understat_player_shot_data_raw = self._build_understat_player_shot_data()
-#         self.understat_player_shot_data_group = self._compile_understat_player_shot_data()
-        # self.understat_player_match_data = self._build_understat_player_match_data()
 
 #================================================================================================================================================================
 #================================================================ BUILD UNDERSTAT TEAM DATA =====================================================================
@@ -403,27 +390,6 @@ class UnderstatAPIParser:
         loop = asyncio.get_event_loop()
         all_player_shot_data = loop.run_until_complete(fetch_all_player_shot_data(all_matched_understat_player_ids))
         return all_player_shot_data
-    
-    # def _build_understat_player_shot_data(self):
-
-    #     async def main():
-    #         async with aiohttp.ClientSession() as session:
-    #             understat = Understat(session)
-    #             player = await understat.get_player_shots(
-    #                 player_id=8562, 
-    #             )
-    #             return player
-        
-    #     loop = asyncio.get_event_loop()
-    #     fetched_data = loop.run_until_complete(main())
-
-    #     all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-    #     all_player_shot_data = {}
-    #     for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player shot data"):
-    #         with UnderstatClient() as understat:
-    #             understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-    #             all_player_shot_data[fpl_player_id] = understat.player(player=str(understat_id)).get_shot_data()
-    #     return all_player_shot_data
 
     def _compile_understat_player_shot_data(self):
 
@@ -450,14 +416,4 @@ class UnderstatAPIParser:
 
             all_player_shot_data[fpl_player_id] = pd.merge(chance_summary, goal_summary, on=['match_id','h_team','a_team'], how='outer').to_dict(orient='records')
         return all_player_shot_data
-    
-    # def _build_understat_player_match_data(self):
-
-    #     all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-    #     all_player_match_data = {}
-    #     for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player match data"):
-    #         with UnderstatClient() as understat:
-    #             understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-    #             all_player_match_data[fpl_player_id] = understat.player(player=str(understat_id)).get_match_data()
-    #     return all_player_match_data
     
