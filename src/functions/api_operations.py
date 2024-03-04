@@ -14,8 +14,10 @@ from dateutil import parser
 
 import asyncio
 import aiohttp
+from tenacity import retry, stop_after_attempt, wait_fixed
 
-from understatapi import UnderstatClient
+# from understatapi import UnderstatClient
+from understat import Understat
 
 '''
 TIPS:
@@ -221,13 +223,71 @@ class UnderstatAPIParser:
     def __init__(self, fpl_api_parser, fpl_helper_fns):
         self.fpl_api_parser = fpl_api_parser
         self.helper_fns = fpl_helper_fns
-        self.understat_to_fpl_team_data = self._match_fpl_to_understat_teams()
-        self.understat_to_fpl_player_data = self._match_fpl_to_understat_players()
         self.understat_team_data = self._build_understat_team_data()
+        self.understat_to_fpl_team_data = self._match_fpl_to_understat_teams()
         self.understat_team_match_data = self._build_understat_team_match_data()
+        self.understat_to_fpl_player_data = self._match_fpl_to_understat_players()
         # self.understat_player_shot_data_raw = self._build_understat_player_shot_data()
-        # self.understat_player_shot_data_group = self._compile_understat_player_shot_data()
+#         self.understat_player_shot_data_group = self._compile_understat_player_shot_data()
         # self.understat_player_match_data = self._build_understat_player_match_data()
+
+#================================================================================================================================================================
+#================================================================ BUILD UNDERSTAT TEAM DATA =====================================================================
+#================================================================================================================================================================
+
+    def _build_understat_team_data(self):
+            
+        async def fetch_team_data():
+            async with aiohttp.ClientSession() as session:
+                understat = Understat(session)
+                teams = await understat.get_teams(
+                    league_name='epl', 
+                    season='2024'
+                )
+                return teams
+                
+        loop = asyncio.get_event_loop()
+        fetched_team_data = loop.run_until_complete(fetch_team_data())
+
+        compiled_team_data = {}
+        for raw_team_data in tqdm_notebook(fetched_team_data, desc = "Fetching team data"):
+            compiled_team_data[raw_team_data["id"]] = raw_team_data.copy()
+            temp_data = {}
+            for gameweek_data in raw_team_data['history']:
+                for primary_param_name, primary_param_val in gameweek_data.items():
+                    if isinstance(primary_param_val, dict): # For ppda where values are dicts
+                        for sub_name, sub_value in primary_param_val.items():
+                            temp_data.setdefault(f"{primary_param_name}_{sub_name}", []).append(sub_value)
+                    else:
+                        temp_data.setdefault(primary_param_name, []).append(primary_param_val)
+            compiled_team_data[raw_team_data["id"]]['history'] = temp_data
+        return compiled_team_data
+
+    def _build_understat_team_match_data(self):
+        
+        async def fetch_team_match_data(team_data, season="2024"):
+            async with aiohttp.ClientSession() as session:
+                understat = Understat(session)
+                player = await understat.get_team_stats(
+                    team_name = team_data["name"],
+                    season = season
+                )
+                return team_data["id"], player
+
+        async def fetch_all_team_match_data(all_team_data):
+            tasks = [fetch_team_match_data(team_data) for team_data in all_team_data]
+            results = {}
+            with tqdm_notebook(total=len(all_team_data), desc = "Fetching team match data") as pbar:
+                for completed_task in asyncio.as_completed(tasks):
+                    team_id, result = await completed_task
+                    results[team_id] = result
+                    pbar.update(1)
+            return results
+        
+        understat_team_identifiers = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data.values()]
+        loop = asyncio.get_event_loop()
+        all_team_match_data = loop.run_until_complete(fetch_all_team_match_data(understat_team_identifiers))
+        return all_team_match_data
 
 #================================================================================================================================================================
 #===================================================================== MATCH FPL TO UNDERSTAT ===================================================================
@@ -237,17 +297,24 @@ class UnderstatAPIParser:
         teams = self.fpl_api_parser.raw_data['teams']
         fpl_data = [{**{param_str: param_val for param_str, param_val in team.items() if param_str in ['id', 'name']}} for team in teams]
 
-        with UnderstatClient() as understat:
-            league_szn_team_stats = understat.league(league="EPL").get_team_data(season="2023")
-            understat_nums_unsorted = [{"id": int(x['id']), "name": x['title']} for x in league_szn_team_stats.values()]
-            understat_data = sorted(understat_nums_unsorted, key=lambda x: x["name"])
+        understat_nums_unsorted = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data.values()]
+        understat_data = sorted(understat_nums_unsorted, key=lambda x: x["name"])
 
         return [{'fpl': d1, 'understat': d2} for d1, d2 in zip(fpl_data, understat_data)]
     
     def _match_fpl_to_understat_players(self):
 
-        with UnderstatClient() as understat:
-            league_player_data = understat.league(league="EPL").get_player_data(season="2023")
+        async def fetch_league_players():
+            async with aiohttp.ClientSession() as session:
+                understat = Understat(session)
+                players = await understat.get_league_players(
+                    league_name='epl', 
+                    season='2023'
+                )
+                return players
+                
+        loop = asyncio.get_event_loop()
+        league_player_data = loop.run_until_complete(fetch_league_players())
 
         matched_data = []
         for test_d in league_player_data:
@@ -266,75 +333,59 @@ class UnderstatAPIParser:
         return matched_data
 
 #================================================================================================================================================================
-#================================================================ BUILD UNDERSTAT TEAM DATA =====================================================================
-#================================================================================================================================================================
-
-    def _build_understat_team_data(self):
-            
-        with UnderstatClient() as understat:
-            fetched_team_data = understat.league(league="EPL").get_team_data(season="2023")
-        compiled_team_data = {}
-        for team_id, raw_team_data in tqdm_notebook(fetched_team_data.items(), desc = "Building understat team data"):
-            compiled_team_data[team_id] = raw_team_data.copy()
-            temp_data = {}
-            for gameweek_data in raw_team_data['history']:
-                for primary_param_name, primary_param_val in gameweek_data.items():
-                    if isinstance(primary_param_val, dict): # For ppda where values are dicts
-                        for sub_name, sub_value in primary_param_val.items():
-                            temp_data.setdefault(f"{primary_param_name}_{sub_name}", []).append(sub_value)
-                    else:
-                        temp_data.setdefault(primary_param_name, []).append(primary_param_val)
-            compiled_team_data[team_id]['history'] = temp_data
-        return compiled_team_data
-        
-    def _build_understat_team_match_data(self):
-        all_fpl_team_ids = [x['fpl']['id'] for x in self.understat_to_fpl_team_data]
-        team_match_data = {}
-        for fpl_team_id in tqdm_notebook(all_fpl_team_ids, desc = "Building understat team match data"):
-            team_name = next(x["understat"]["name"] for x in iter(self.understat_to_fpl_team_data) if x["fpl"]["id"] == int(fpl_team_id))
-            formatted_team_name = team_name.replace(" ", "_")
-            with UnderstatClient() as understat:
-                team_match_data[fpl_team_id] = understat.team(team=formatted_team_name).get_match_data(season="2023")
-        return team_match_data
-    
-#================================================================================================================================================================
 #================================================================ BUILD UNDERSTAT PLAYER DATA ===================================================================
 #================================================================================================================================================================
 
-    # async def fetch_player_shot_data(self, understat_client, fpl_player_id):
-    #     async with aiohttp.ClientSession() as session:
-    #         understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-    #         player_shot_data = await understat_client.player(player=str(understat_id)).get_shot_data()
-    #         return fpl_player_id, player_shot_data
-
-    # async def fetch_all_player_shot_data(self, understat_client, player_ids):
-    #     tasks = [self.fetch_player_shot_data(understat_client, player_id) for player_id in player_ids]
-    #     results = {}
-    #     with tqdm_notebook(total=len(player_ids)) as pbar:
-    #         for completed_task in asyncio.as_completed(tasks):
-    #             player_id, result = await completed_task
-    #             results[player_id] = result
-    #             pbar.update(1)
-    #     return results
-
-    # def _build_understat_player_shot_data(self):
-    #     all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-    #     understat_client = UnderstatClient()  # assuming you have your UnderstatClient class
-    #     loop = asyncio.get_event_loop()
-    #     all_player_shot_data = loop.run_until_complete(self.fetch_all_player_shot_data(understat_client, all_matched_fpl_player_ids))
-    #     return all_player_shot_data
-    
     def _build_understat_player_shot_data(self):
 
-        all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-        all_player_shot_data = {}
-        for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player shot data"):
-            with UnderstatClient() as understat:
-                try:
-                    understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-                except: print(fpl_player_id)
-                all_player_shot_data[fpl_player_id] = understat.player(player=str(understat_id)).get_shot_data()
+        @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), retry_error_callback=lambda x: isinstance(x, TimeoutError))
+        async def fetch_player_shot_data(understat_player_id):
+            try:
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+                    understat = Understat(session)
+                    player_shot_data = await understat.get_player_shots(
+                        player_id=understat_player_id,
+                    )
+                    return understat_player_id, player_shot_data
+            except aiohttp.ClientError as e:
+                print(f"Error fetching player shot data for player ID {understat_player_id}: {e}")
+                return understat_player_id, None
+        
+        async def fetch_all_player_shot_data(player_ids):
+            tasks = [fetch_player_shot_data(player_id) for player_id in player_ids]
+            results = {}
+            with tqdm_notebook(total=len(player_ids), desc = "Fetching player shot data") as pbar:
+                for completed_task in asyncio.as_completed(tasks):
+                    player_id, result = await completed_task
+                    results[player_id] = result
+                    pbar.update(1)
+            return results
+
+        all_matched_understat_player_ids = [x['understat']['id'] for x in self.understat_to_fpl_player_data]
+        loop = asyncio.get_event_loop()
+        all_player_shot_data = loop.run_until_complete(fetch_all_player_shot_data(all_matched_understat_player_ids))
         return all_player_shot_data
+    
+    # def _build_understat_player_shot_data(self):
+
+    #     async def main():
+    #         async with aiohttp.ClientSession() as session:
+    #             understat = Understat(session)
+    #             player = await understat.get_player_shots(
+    #                 player_id=8562, 
+    #             )
+    #             return player
+        
+    #     loop = asyncio.get_event_loop()
+    #     fetched_data = loop.run_until_complete(main())
+
+    #     all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
+    #     all_player_shot_data = {}
+    #     for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player shot data"):
+    #         with UnderstatClient() as understat:
+    #             understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
+    #             all_player_shot_data[fpl_player_id] = understat.player(player=str(understat_id)).get_shot_data()
+    #     return all_player_shot_data
 
     def _compile_understat_player_shot_data(self):
 
@@ -362,13 +413,13 @@ class UnderstatAPIParser:
             all_player_shot_data[fpl_player_id] = pd.merge(chance_summary, goal_summary, on=['match_id','h_team','a_team'], how='outer').to_dict(orient='records')
         return all_player_shot_data
     
-    def _build_understat_player_match_data(self):
+    # def _build_understat_player_match_data(self):
 
-        all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-        all_player_match_data = {}
-        for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player match data"):
-            with UnderstatClient() as understat:
-                understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-                all_player_match_data[fpl_player_id] = understat.player(player=str(understat_id)).get_match_data()
-        return all_player_match_data
+    #     all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
+    #     all_player_match_data = {}
+    #     for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player match data"):
+    #         with UnderstatClient() as understat:
+    #             understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
+    #             all_player_match_data[fpl_player_id] = understat.player(player=str(understat_id)).get_match_data()
+    #     return all_player_match_data
     
