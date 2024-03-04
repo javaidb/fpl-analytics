@@ -524,9 +524,15 @@ class UnderStatHelperFns:
     def grab_team_USname_from_FPLID(self, fpl_player_id):
         return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
 
-    def fetch_team_xg_against_teams_data(self, fpl_team_id):
+    def fetch_team_xg_against_teams_data(self, fpl_team_id) -> list:
         """
-        Function returns xG of a specified team against all teams so far. Use fetch team all stats for expanded view
+        Takes an inputted ID of a team from FPL API and outputs the associated team's expected goals (xG) data from understat API
+
+        Args:
+            fpl_team_id (int): FPL team ID
+
+        Returns:
+            list: List of dictionaries, where each dictionary represents each gameweek, associated xG data and the team faced
         """
         team_match_data = self.api_understat_parser.understat_team_match_data[fpl_team_id]
         xg_data = []
@@ -545,11 +551,17 @@ class UnderStatHelperFns:
             })
         return xg_data
     
-    def fetch_finite_team_param_stats(self, look_back):
+    def fetch_finite_team_param_stats(self, look_back) -> list:
         """
         Function returns all stats of all teams over a certain look back period, thus reducing to a finite value, both outputting averages and sums of all stats. 
         Usefulness is in stats like PPDA which outline how well-pressing certain teams are, which can be later be used to match up upcoming 
         teams and assess weaknesses based on general PPDA and specific PPDA.
+
+        Args:
+            look_back (int): Number of gameweeks in the past to evaluate statistics over.
+
+        Returns:
+            list: List of dictionaries, where each dictionary represents each team and the associated finite value of each parameter evaluated across the look back period.
         """
         cols_to_omit = ['h_a', 'result', 'date', 'id', 'title']
         
