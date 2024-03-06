@@ -15,12 +15,11 @@ from src.config import config
 
 class VisualizationOperations:
     
-    def __init__(self, api_parser, data_parser, data_analytics, helper_fns):
-        self.api_parser = api_parser
-        self.data_parser = data_parser
+    def __init__(self, data_grabber, data_analytics):
+        self.data_grabber = data_grabber
+        self.helper_fns = data_grabber.helper_fns
         self.data_analytics = data_analytics
-        self.helper_fns = helper_fns
-        self.output_league_stats_across_gameweeks()
+        self.export_all_league_stat_figures()
 
     #========================== Plot data ==========================
 
@@ -79,7 +78,7 @@ class VisualizationOperations:
     #     return
 
     def grab_ownership_count_str(self, player_id: int, league_name, format_color):
-        compiled_ownership = next(x["summary"] for x in iter(self.data_parser.league_data) if x["name"] == str(league_name))
+        compiled_ownership = next(x["summary"] for x in iter(self.data_grabber.league_data) if x["name"] == str(league_name))
         relevant_player_ids = compiled_ownership["players"]
 
         id_count = 0 if player_id not in relevant_player_ids.keys() else relevant_player_ids[player_id]
@@ -212,7 +211,7 @@ class VisualizationOperations:
         gameweek_special_cases = highlight_blanks_and_gameweeks_from_data(all_fixture_data)
         
         fdr_color_scheme = config.FDR_COLOR_SCHEMES
-        dgws = list(self.api_parser.dgws.keys())
+        dgws = list(self.helper_fns.special_gws["dgws"].keys())
         
         one_white_space = ' '
         no_space = ''
@@ -336,7 +335,7 @@ class VisualizationOperations:
 
     #     table_cols = ['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆₁ₖ','☆₁₀ₖ','☆₁₀₀ₖ','☆','Upcoming Fixtures']
         table_cols = ['Position', 'Team', 'Player', 'Cost', 'Past FDRs', 'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes']
-        for league_info in self.data_parser.league_data:
+        for league_info in self.data_grabber.league_data:
             table_cols += [league_info["symbol"]]
         table_cols += ['Upcoming Fixtures']
         tab = PrettyTable(table_cols)
@@ -350,7 +349,7 @@ class VisualizationOperations:
             temp_tab_row = []
             for col_name in cols_of_interest:
                 temp_tab_row.append(player_data[col_name])
-            for league_info in self.data_parser.league_data:
+            for league_info in self.data_grabber.league_data:
                 temp_tab_row.append(self.grab_ownership_count_str(int(float((player_data['id']))), league_name=league_info["name"] , format_color='buy'))
             temp_tab_row.append(self.compile_n_format_upcoming_fixtures_for_vis(self.helper_fns.grab_upcoming_fixtures([player_id], 4))[player_id])
             tab.add_row(temp_tab_row)
@@ -509,17 +508,17 @@ class VisualizationOperations:
         plot_obj.gca().spines['right'].set_color(plot_settings.get("rgb_setting_font"))
         
         if custom_protocol == "rank_history":
-            rectangle = plot_obj.Rectangle((self.api_parser.latest_gw, 0.5), 0.1, 1, color='gold', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 0.5), 0.1, 1, color='gold', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.api_parser.latest_gw, 1.5), 0.1, 1, color='silver', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 1.5), 0.1, 1, color='silver', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.api_parser.latest_gw, 2.5), 0.1, 1, color='orange', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 2.5), 0.1, 1, color='orange', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.api_parser.latest_gw, 3.5), 0.1, 13, color='green', alpha=0.2)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 3.5), 0.1, 13, color='green', alpha=0.2)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.api_parser.latest_gw, 16.5), 0.1, 1, color='red', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 16.5), 0.1, 1, color='red', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            plot_obj.gca().add_patch(plot_obj.Rectangle((self.api_parser.latest_gw + 1, 14), 0.001, 5, color = (1, 1, 0.8), alpha = 0.99, zorder = 10))
+            plot_obj.gca().add_patch(plot_obj.Rectangle((self.data_grabber.latest_gw + 1, 14), 0.001, 5, color = (1, 1, 0.8), alpha = 0.99, zorder = 10))
 
         # Add github and other credentials
         add_logo('../../images/github_logo.png', 0.08, 0.05, 0.02)
@@ -527,7 +526,11 @@ class VisualizationOperations:
         add_logo('../../images/FPL_Fantasy_2.png', 0.88, 0.09, 0.16)
         plot_obj.savefig(f'../../figures/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
 
-    def output_league_stats_across_gameweeks(self, league_id = 782655):
+    def export_all_league_stat_figures(self):
+        for league_id in self.helper_fns.league_ids:
+            self.export_league_stat_figures(league_id)
+
+    def export_league_stat_figures(self, league_id: int):
         total_player_data, last_update_time, league_name = self.helper_fns.get_rank_data(league_id)
         text_box_writing = f'Last update time: {last_update_time}'
         plot_settings = {
