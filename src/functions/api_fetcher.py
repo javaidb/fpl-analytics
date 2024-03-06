@@ -29,14 +29,14 @@ class FPLAPIParser:
     def __init__(self):
         self.base_url = config.BASE_URL
         self.raw_data = self.fetch_data_from_api('bootstrap-static/')
-        self.player_ids = [x['id'] for x in self.raw_data['elements']]
+        self.latest_gw = self.get_latest_gameweek()
+        self.player_ids = self.grab_player_ids()
         self.raw_element_summary = {}
         self.config_data = self.get_config_data()
-        self.latest_gw = self.get_latest_gameweek()
         self.rival_ids = self.fetch_rivals_based_on_pts()
         self.personal_fpl_raw_data = self.fetch_personal_fpl_data()
         self.fixtures = self.fetch_fixtures()
-        self.blanks, self.dgws = self.look_for_blanks_and_dgws()
+        # self.blanks, self.dgws = self.look_for_blanks_and_dgws()
         self.rival_stats = self.tabulate_rival_stats(self.get_beacon_ids())
         self.full_element_summary = asyncio.run(self.compile_master_element_summary())
 
@@ -50,12 +50,6 @@ class FPLAPIParser:
         #         data = await response.json()
         #         return data
     
-    def get_config_data(self):
-        config_data_path = os.path.abspath('../src/config/data.json')
-        with open(config_data_path, 'r') as file:
-            data = json.load(file)
-            return data
-
     def get_latest_gameweek(self):
         gwdata = self.raw_data['events']
         now = datetime.now(timezone.utc)
@@ -64,6 +58,15 @@ class FPLAPIParser:
             default=None
         )
         return latest_gw
+    
+    def grab_player_ids(self):
+        return [x['id'] for x in self.raw_data['elements']]
+    
+    def get_config_data(self):
+        config_data_path = os.path.abspath('../src/config/data.json')
+        with open(config_data_path, 'r') as file:
+            data = json.load(file)
+            return data
 
     def get_league_ids(self):
         active_szn = self.config_data["fpl_id_data"]
@@ -79,17 +82,17 @@ class FPLAPIParser:
 
     def fetch_rivals_based_on_pts(self):
         rival_team_ids = []
+        personal_fpl_name = self.fetch_player_fpl_name(self.get_personal_fpl_id())
         for league_id in self.get_league_ids():
             r = self.fetch_data_from_api('leagues-classic/' + str(league_id) + '/standings/')
-            RANK_THRESH = 99
-            for i in r['standings']['results']:
-                if 'Javaid' in i['player_name']:
-                    RANK_THRESH = i['rank']
-            RIVAL_IDS = []
-            for i in r['standings']['results']:
-                if i['rank'] < min(RANK_THRESH,5):
-                    RIVAL_IDS.append(i['entry'])
-            rival_team_ids.append(RIVAL_IDS)
+            rank_threshold = next((i['rank'] for i in iter(r['standings']['results']) if ['player_name'] == personal_fpl_name), None)
+            if rank_threshold:
+                rival_ids = []
+                for i in r['standings']['results']:
+                    if i['rank'] < min(rank_threshold,5):
+                        rival_ids.append(i['entry'])
+                rival_team_ids.append(rival_ids)
+        return rival_team_ids
 
     def fetch_fpl_data(self, fpl_id):
         fpl_info = self.fetch_data_from_api(f"entry/{fpl_id}")
@@ -117,23 +120,6 @@ class FPLAPIParser:
     
     def fetch_fixtures(self):
         return self.fetch_data_from_api('fixtures/')
-    
-    def look_for_blanks_and_dgws(self):
-        GWS={}
-        for fixture_data in self.fixtures:
-            GW = fixture_data['event']
-            if GW:
-                if GW not in GWS.keys():
-                    GWS[GW] = []
-                GWS[GW].extend((fixture_data['team_a'],fixture_data['team_h']))
-        BLANKS={}
-        DGWS={}
-        for gw,teams in GWS.items():
-            BLANKS[gw] = [x for x in range(1,21) if x not in teams]
-            DGWS[gw] = [x for x in teams if teams.count(x) > 1]
-        BLANKS = {k: v for k, v in BLANKS.items() if v}
-        DGWS = {k: v for k, v in DGWS.items() if v}
-        return BLANKS,DGWS
     
     async def fetch_element_summaries(self, player_id: int, session = None):
         if player_id in self.raw_element_summary:
