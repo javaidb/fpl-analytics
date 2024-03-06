@@ -9,10 +9,9 @@ import os
 import json
 
 class DataAnalytics:
-    def __init__(self, api_parser, data_parser, helper_fns):
-        self.api_parser = api_parser
-        self.data_parser = data_parser
-        self.helper_fns = helper_fns
+    def __init__(self, data_grabber):
+        self.data_grabber = data_grabber
+        self.helper_fns = data_grabber.helper_fns
         # self.personal_team_df = self.compile_fpl_team() #df_out
         self.personal_team_data = self.compile_personal_team_data() #df_fpl
         self.replacement_players = self.compile_prospects()
@@ -22,7 +21,7 @@ class DataAnalytics:
         # self.initialize_decisions()
     
     def compile_personal_team_data(self):
-        r = self.api_parser.personal_fpl_raw_data["latest_picks"]
+        r = self.data_grabber.personal_fpl_raw_data["latest_picks"]
         fpl_team_ids = set([x["element"] for x in r["picks"]])
         return self.helper_fns.compile_player_data(fpl_team_ids)
 
@@ -90,8 +89,8 @@ class DataAnalytics:
 
 
     def apply_scores_and_compile_prospects(self, list_of_ids: list):
-        form_score_data = self.score_players_on_form(self.api_parser.player_ids)
-        fixture_score_data = self.score_players_on_fixtures(self.api_parser.player_ids)
+        form_score_data = self.score_players_on_form(self.data_grabber.player_ids)
+        fixture_score_data = self.score_players_on_fixtures(self.data_grabber.player_ids)
         # team_score_data = self.score_players_on_fixtures(self.api_parser.player_ids)
 
         df = pd.DataFrame.from_dict({
@@ -108,7 +107,7 @@ class DataAnalytics:
         return df.sort_values(by=['form_score'], ascending=False)
     
     def compile_prospects(self, list_of_ids: list = None):
-        if list_of_ids is None: list_of_ids = self.api_parser.player_ids
+        if list_of_ids is None: list_of_ids = self.data_grabber.player_ids
         df = self.apply_scores_and_compile_prospects(list_of_ids)
         return df.loc[df['form_score'] > 0.5]['player_id'].to_list()
 
@@ -428,7 +427,7 @@ class DataAnalytics:
 #============================================  beacon INITIALIZATIONS  ============================================
 
     def generate_beacon_effective_ownership(self):
-        id_count = self.api_parser.rival_stats['id_count']
+        id_count = self.data_grabber.rival_stats['id_count']
         id_dict = {}
         for i in id_count:
             pos = self.helper_fns.grab_player_pos(i)
@@ -453,7 +452,7 @@ class DataAnalytics:
             file = open(output_file_path, "r")
             contents = file.read()
             dictionary = ast.literal_eval(contents)
-            dictionary[str(self.api_parser.latest_gw)] = self.prospects_df['id'].tolist() + self.primes_df['id'].tolist()
+            dictionary[str(self.data_grabber.latest_gw)] = self.prospects_df['id'].tolist() + self.primes_df['id'].tolist()
             with open(output_file_path, 'w') as conv_file:
                 conv_file.write(json.dumps(dictionary))
             file.close()
@@ -468,7 +467,7 @@ class DataAnalytics:
             file = open(output_file_path, "r")
             contents = file.read()
             dictionary = ast.literal_eval(contents)
-            dictionary[str(self.api_parser.latest_gw)] = self.api_parser.rival_id_data
+            dictionary[str(self.data_grabber.latest_gw)] = self.data_grabber.rival_id_data
             with open(output_file_path, 'w') as conv_file:
                 conv_file.write(json.dumps(dictionary))
             file.close()
@@ -477,7 +476,7 @@ class DataAnalytics:
 
         def compile_returns():
             returns = []
-            for i in self.potential_dict[str(self.api_parser.latest_gw)]:
+            for i in self.potential_dict[str(self.data_grabber.latest_gw)]:
                 returns.append(self.helper_fns.grab_player_hist(i)[-1])
             larger_elements = [element for element in returns if element > 3]
             number_of_elements = len(larger_elements)
@@ -489,7 +488,7 @@ class DataAnalytics:
             file = open(output_file_path, "r")
             contents = file.read()
             dict_acc = ast.literal_eval(contents)
-            dict_acc[str(self.api_parser.latest_gw)] = {'instant': accuracy*100}
+            dict_acc[str(self.data_grabber.latest_gw)] = {'instant': accuracy*100}
             with open(output_file_path, 'w') as conv_file:
                 conv_file.write(json.dumps(dict_acc))
             file.close()
