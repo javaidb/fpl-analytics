@@ -12,3 +12,5 @@ notebooks/sandbox.ipynb
 
 # Ignore data file with personal info entered
 src/config/data.json
+images/
+figures/
