@@ -1,7 +1,7 @@
 import os
 
 
-def grab_path(path_from_root: str, relative=False, absolute=False):
+def grab_path_relative_to_root(path_from_root: str, relative=False, absolute=False):
     """
     Find the path provided from the root, whether it is relative to the current location or from the drive (such as C:), and create if not found.
     The root in this case is considered as the name of the git repository that houses other folders.
@@ -12,15 +12,15 @@ def grab_path(path_from_root: str, relative=False, absolute=False):
     Returns:
     - str: The concatenated path to the directory provided from root.
     """
-    root_path, rel_path_to_root = find_paths_to_root()
+    root_path, rel_path_to_root = _find_paths_to_root()
 
     if relative:
-        return ensure_directory_exists(os.path.join(rel_path_to_root, path_from_root))
+        return _ensure_directory_exists(os.path.join(rel_path_to_root, path_from_root))
     elif absolute:
-        return ensure_directory_exists(os.path.join(root_path, path_from_root))
+        return _ensure_directory_exists(os.path.join(root_path, path_from_root))
     else: print("One of 'absolute' or 'relative' needs to be True")
 
-def find_paths_to_root():
+def _find_paths_to_root():
     """
     Find the root directory and the relative path from the current location to the root directory.
 
@@ -44,7 +44,7 @@ def find_paths_to_root():
 
     return root_path, rel_path_to_root
 
-def ensure_directory_exists(full_path: str) -> str:
+def _ensure_directory_exists(full_path: str) -> str:
     """
     Ensure that the directory structure for the given path exists relative to the 'src' directory.
     If the directory does not exist, create it.

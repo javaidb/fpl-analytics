@@ -12,7 +12,7 @@ import re
 # from dash_table import DataTable
 import statistics
 from src.config import config
-from src.functions.data_exporter import grab_path
+from src.functions.data_exporter import grab_path_relative_to_root
 
 class VisualizationOperations:
     
@@ -520,11 +520,11 @@ class VisualizationOperations:
 
         # Add github and other credentials
         league_name = plot_settings.get("league_name")
-        images_dir_relative = grab_path("images/", relative=True)
+        images_dir_relative = grab_path_relative_to_root("images/", relative=True)
         add_logo(f'{images_dir_relative}/github-mark-white.png', 0.08, 0.05, 0.02)
         add_logo(f'{images_dir_relative}/bar-graph.png', 0.89, 0.31, 0.12)
         add_logo(f'{images_dir_relative}/FPL_Fantasy_2.png', 0.88, 0.09, 0.16)
-        figs_dir_relative = grab_path(f"figures/{league_name}", relative=True)
+        figs_dir_relative = grab_path_relative_to_root(f"figures/{league_name}", relative=True)
         plot_obj.savefig(f'{figs_dir_relative}/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
 
     def export_all_league_stat_figures(self):
