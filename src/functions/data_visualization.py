@@ -12,6 +12,7 @@ import re
 # from dash_table import DataTable
 import statistics
 from src.config import config
+from src.functions.data_exporter import grab_path
 
 class VisualizationOperations:
     
@@ -433,16 +434,13 @@ class VisualizationOperations:
 #============================================================== FIGURE EXPORTS OUTLINING LEAGUE RANK/POINT SPREAD ACROSS GWS ============================================================
 #========================================================================================================================================================================================
 
-    def _process_plot_functions(self, plot_obj, plot_settings:dict, input_data: list, custom_protocol=None):
+    def _process_plot_functions(self, plot_obj, plot_settings: dict, input_data: list, custom_protocol=None):
         plot_obj.rcParams['font.family'] = plot_settings.get("font_setting")
         fig = plot_obj.figure(figsize=plot_settings.get("fig_size"))
         plot_obj.gca().set_facecolor(plot_settings.get("rgb_setting_bg"))
         for player_data in input_data:
-            if custom_protocol == "entry_history":
-                lookback = 9
-            elif custom_protocol == "rank_history":
-                lookback = 0
-            params = [param for _, param in player_data[custom_protocol]][-lookback:]
+            lookback = 9 if custom_protocol == "entry_history" else 0
+            params = [min(param, 20) if custom_protocol == "rank_history" else param for _, param in player_data[custom_protocol]][-lookback:]
             gws = [gw_num for gw_num, _ in player_data[custom_protocol]][-lookback:]
             color = next(plot_settings.get("color_cycle"))
             plot_obj.plot(gws, params, marker='', linestyle='-', color=color, linewidth=2.5, label=' '.join([word.capitalize() for word in player_data["player_name"].split()]))
@@ -514,17 +512,20 @@ class VisualizationOperations:
             fig.gca().add_patch(rectangle)
             rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 2.5), 0.1, 1, color='orange', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 3.5), 0.1, 13, color='green', alpha=0.2)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 3.5), 0.1, len(input_data)-4, color='green', alpha=0.2)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 16.5), 0.1, 1, color='red', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, len(input_data)-0.5), 0.1, 1, color='red', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            plot_obj.gca().add_patch(plot_obj.Rectangle((self.data_grabber.latest_gw + 1, 14), 0.001, 5, color = (1, 1, 0.8), alpha = 0.99, zorder = 10))
+            # plot_obj.gca().add_patch(plot_obj.Rectangle((self.data_grabber.latest_gw + 1, 14), 0.001, 5, color = (1, 1, 0.8), alpha = 0.99, zorder = 10))
 
         # Add github and other credentials
-        add_logo('../../images/github_logo.png', 0.08, 0.05, 0.02)
-        add_logo('../../images/bar-graph.png', 0.89, 0.31, 0.12)
-        add_logo('../../images/FPL_Fantasy_2.png', 0.88, 0.09, 0.16)
-        plot_obj.savefig(f'../../figures/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
+        league_name = plot_settings.get("league_name")
+        images_dir_relative = grab_path("images/", relative=True)
+        add_logo(f'{images_dir_relative}/github-mark-white.png', 0.08, 0.05, 0.02)
+        add_logo(f'{images_dir_relative}/bar-graph.png', 0.89, 0.31, 0.12)
+        add_logo(f'{images_dir_relative}/FPL_Fantasy_2.png', 0.88, 0.09, 0.16)
+        figs_dir_relative = grab_path(f"figures/{league_name}", relative=True)
+        plot_obj.savefig(f'{figs_dir_relative}/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
 
     def export_all_league_stat_figures(self):
         for league_id in self.helper_fns.league_ids:
@@ -532,6 +533,8 @@ class VisualizationOperations:
 
     def export_league_stat_figures(self, league_id: int):
         total_player_data, last_update_time, league_name = self.helper_fns.get_rank_data(league_id)
+        #In order to make league figure reasonable, only keep top 20 players
+        total_player_data = total_player_data[:20]
         text_box_writing = f'Last update time: {last_update_time}'
         plot_settings = {
             "league_name": league_name,
