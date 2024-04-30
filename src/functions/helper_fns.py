@@ -6,9 +6,11 @@ import pandas as pd
 import numpy as np
 import sys
 
-from collections import defaultdict
+from src.functions.data_exporter import output_data_to_json, grab_path_relative_to_root
 
+from collections import defaultdict
 import asyncio
+import json
 
 # from understatapi import UnderstatClient
 # from fuzzywuzzy import fuzz
@@ -27,6 +29,44 @@ def progress_bar_update(i, num_iter, complete=False):
     else:
         sys.stdout.write('\rProcessing... \x1b[32m\u2714\x1b[0m\n')
     sys.stdout.flush()
+
+def initialize_local_data(instance, data_list, update_and_export_data = False):
+
+    """
+    Function used to import from local data AND choose to either update it from relevant API endpoints before importing or not
+    (Option chosen as API endpoints such as UnderStat can be computationally expensive if running every time)
+
+    Parameters:
+    - data_list (list): List that contains the following format:
+        [{
+                "function": <ENTER FUNCTION NAME>,
+                "attribute_name": <ENTER ATTRIBUTE NAME>,
+                "file_name": <ENTER FILE NAME>,
+                "export_path": <ENTER DIRECTORY TO FILE>,
+        }]
+    - update_and_export_data (bool): Description of parameter2.
+
+    Returns:
+    - N/A: Initializes variables, does not return anything.
+    """
+
+    for item in data_list:
+        function = item.get('function')
+        attribute = item.get('attribute_name')
+        file_path = item.get('export_path')
+        file_name = item.get('file_name')
+        file_path_written = grab_path_relative_to_root(file_path, absolute=True, create_if_nonexistent=True)
+        full_path = f'{file_path_written}/{file_name}.json'
+
+        if function and attribute and file_path:
+            if update_and_export_data or not os.path.exists(full_path):
+                data = function()
+                output_data_to_json(data, full_path)
+            else:
+                with open(full_path, 'r') as file:
+                    data = json.load(file)
+            setattr(instance, attribute, data)
+
 
 class GeneralHelperFns:
     def __init__(self, raw_data_parser, compiled_data_parser):
