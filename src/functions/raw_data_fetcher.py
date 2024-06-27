@@ -31,9 +31,8 @@ This allows for async contexts to be used synchronously, e,g, i can now use raw_
 class FPLFetcher:
     def __init__(self):
         self.base_url = config.BASE_URL
-        self.raw_data = self.fetch_data_from_api('bootstrap-static/')
+        self.raw_data, self.season_year_span_id = self.process_raw_data()
         self.latest_gw = self.get_latest_gameweek()
-        self.season_year_span_id = self.get_season_year_span()
         self.player_ids = self.grab_player_ids()
         self.raw_element_summary = {}
         self.config_data = self.get_config_data()
@@ -43,6 +42,16 @@ class FPLFetcher:
         # self.blanks, self.dgws = self.look_for_blanks_and_dgws()
         self.rival_stats = self.tabulate_rival_stats(self.get_beacon_ids())
         self.full_element_summary = asyncio.run(self.compile_master_element_summary())
+
+    def process_raw_data(self):
+        raw_data = self.fetch_data_from_api('bootstrap-static/')
+        season_year_span_id = self.get_season_year_span(raw_data)
+        raw_data_path = f"cached_data/fpl/{season_year_span_id}"
+        raw_data_file_name = f"raw_data_{season_year_span_id}"
+        file_path_written = grab_path_relative_to_root(raw_data_path, absolute=True, create_if_nonexistent=True)
+        full_path = f'{file_path_written}/{raw_data_file_name}.json'
+        output_data_to_json(raw_data, full_path)
+        return raw_data, season_year_span_id
 
     def fetch_data_from_api(self, endpoint):
         url = f'{self.base_url}{endpoint}'
@@ -63,8 +72,8 @@ class FPLFetcher:
         )
         return latest_gw
     
-    def get_season_year_span(self):
-        datetime_strings = [x['deadline_time'] for x in self.raw_data['events']]
+    def get_season_year_span(self, raw_data):
+        datetime_strings = [x['deadline_time'] for x in raw_data['events']]
         years = [datetime.strptime(dt_str, '%Y-%m-%dT%H:%M:%SZ').year for dt_str in datetime_strings]
         start_year = years[0]
         end_year = years[-1]
@@ -226,49 +235,50 @@ class UnderstatFetcher:
                 "function": self._build_understat_team_data,
                 "attribute_name": "understat_team_data",
                 "file_name": "team_data",
-                "export_path": "cached_data/understat/team",
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/team",
              },
             {
                 "function": self._match_fpl_to_understat_teams,
                 "attribute_name": "understat_to_fpl_team_data",
                 "file_name": "understat_to_fpl_team_data",
-                "export_path": "cached_data/understat/team",
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/team",
              },
             {
                 "function": self._build_understat_team_shot_data,
                 "attribute_name": "understat_team_shot_data",
                 "file_name": "team_shot_data",
-                "export_path": "cached_data/understat/team"
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/team"
              },
             {
                 "function": self._build_understat_team_match_data,
                 "attribute_name": "understat_team_match_data",
                 "file_name": "team_match_data",
-                "export_path": "cached_data/understat/team"
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/team"
              },
             {
                 "function": self._build_understat_player_data,
                 "attribute_name": "understat_player_data",
                 "file_name": "player_data",
-                "export_path": "cached_data/understat/players"
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/players"
              },
             {
                 "function": self._match_fpl_to_understat_players,
                 "attribute_name": "understat_to_fpl_player_data",
                 "file_name": "understat_to_fpl_player_data",
-                "export_path": "cached_data/understat/players"
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/players",
+                "update_bool_override": True,
              },
             {
                 "function": self._build_understat_player_shot_data,
                 "attribute_name": "understat_player_shot_data_raw",
                 "file_name": "player_shot_data",
-                "export_path": "cached_data/understat/players"
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/players"
              },
             {
                 "function": self._build_understat_player_match_data,
                 "attribute_name": "understat_player_match_data",
                 "file_name": "player_match_data",
-                "export_path": "cached_data/understat/players"
+                "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/players"
              }
         ], update_and_export_data)
         # self.understat_team_data = self._build_understat_team_data() if update_bool else 
@@ -393,18 +403,19 @@ class UnderstatFetcher:
     def _match_fpl_to_understat_players(self):
 
         matched_data = []
-        for test_d in self.understat_player_data:
-            team_name = test_d["team_title"].split(",")[-1] #Account for cases where player switched teams in PL
-            fpl_team_id = next(x["fpl"]["id"] for x in iter(self.understat_to_fpl_team_data) if x["understat"]["name"] == team_name)
-            matched_fpl_player_id = self.helper_fns.find_best_match(test_d["player_name"], fpl_team_id)
+        for understat_player_info in self.understat_player_data:
+            team_name_list = understat_player_info["team_title"].split(",") #Account for cases where player switched teams in PL
+            fpl_team_id_list = [next(x["fpl"]["id"] for x in iter(self.understat_to_fpl_team_data) if x["understat"]["name"] == team_name) for team_name in team_name_list]
+            matched_fpl_player_id = self.helper_fns.find_best_match(understat_player_info["player_name"], fpl_team_id_list)
             if matched_fpl_player_id is not None:
                 matched_data.append({
                     "fpl": {
-                        "id": int(matched_fpl_player_id)
+                        "id": int(matched_fpl_player_id),
+                        "name": self.helper_fns.grab_player_name(int(matched_fpl_player_id)),
                     },
                     "understat": {
-                        "id": int(test_d["id"]),
-                        "name": test_d["player_name"],
+                        "id": int(understat_player_info["id"]),
+                        "name": understat_player_info["player_name"],
                     }
                 })
         return matched_data
