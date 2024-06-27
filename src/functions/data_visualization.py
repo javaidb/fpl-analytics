@@ -216,7 +216,7 @@ class VisualizationOperations:
         
         one_white_space = ' '
         no_space = ''
-        printstring = no_space
+        printstring, space_between_fixtures = no_space, one_white_space
         mgw_count = 0
         
         for gw_data in all_fixture_data:
@@ -244,11 +244,11 @@ class VisualizationOperations:
             else:
                 #For cases where there are OTHER fixtures where this gw IS a double
                 if gw_data['gameweek'] in dgws:
-                    spacing = one_white_space*7
+                    spacing = one_white_space*8
                 #For normal cases
                 else:
                     spacing = one_white_space*4
-                printstring += f"\x1b[48;2;210;210;210m{spacing}-{spacing}\x1b[0m{space_between_fixtures}"
+                printstring += f"\x1b[48;2;210;210;210m{spacing}--{spacing}\x1b[0m{space_between_fixtures}"
         return printstring
 
     def compile_n_format_upcoming_fixtures_for_vis(self, fixture_dict_with_ids: dict):
@@ -324,7 +324,7 @@ class VisualizationOperations:
 
         return [{k: v for k, v in d.items() if v is not None} for d in transformed_player_data]
 
-    def player_summary(self, player_ids: list, param_spread: int = 5):
+    def build_player_tabular_summary(self, player_ids: list, param_spread: int = 5):
 
         compiled_player_data = self.helper_fns.compile_player_data(player_ids)
         sliced_player_data = self.helper_fns.slice_player_data(compiled_player_data, param_spread)
@@ -363,11 +363,11 @@ class VisualizationOperations:
         beacon_picks = list(self.data_analytics.beacon_effective_ownership.keys())
         values = list(set(replacements).union(set(beacon_picks)))
         values = [x for x in values if x not in list(self.data_analytics.personal_team_data.keys())]
-        self.player_summary(player_ids=values)
+        self.build_player_tabular_summary(player_ids=values)
         return
 
     # def replacement_summary(self, net_limit = True):
-    #     net_spend_limit = round(self.api_parser.personal_fpl_raw_data['entry_history']['bank']/10, 2)
+    #     net_spend_limit = round(self.api_parser.personal_fpl_raw_data['total_points']['bank']/10, 2)
     #     tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','Team','Past FDRs','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
     #     if net_limit:
     #         nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
@@ -439,7 +439,7 @@ class VisualizationOperations:
         fig = plot_obj.figure(figsize=plot_settings.get("fig_size"))
         plot_obj.gca().set_facecolor(plot_settings.get("rgb_setting_bg"))
         for player_data in input_data:
-            lookback = 9 if custom_protocol == "entry_history" else 0
+            lookback = 9 if custom_protocol == "total_points" else 0
             params = [min(param, 20) if custom_protocol == "rank_history" else param for _, param in player_data[custom_protocol]][-lookback:]
             gws = [gw_num for gw_num, _ in player_data[custom_protocol]][-lookback:]
             color = next(plot_settings.get("color_cycle"))
@@ -454,7 +454,7 @@ class VisualizationOperations:
             plot_obj.yticks(np.arange(1, max(params) + 1), placements, color=plot_settings.get("rgb_setting_font"), fontname=plot_settings.get("font_setting"), fontsize=13)
             plot_obj.xticks(np.arange(min(gws), max(gws) + 1), color=plot_settings.get("rgb_setting_font"), fontname=plot_settings.get("font_setting"), fontsize=13)
             figure_png_name = f'ranks_{plot_settings.get("league_id")}'
-        elif custom_protocol == "entry_history":
+        elif custom_protocol == "total_points":
             plot_obj.ylabel('League Points', color=plot_settings.get("rgb_setting_font"), fontsize=16, fontname=plot_settings.get("font_setting"), labelpad=20)
             plot_obj.title(f"League Points History '23/24: {plot_settings.get('league_name')}", color=plot_settings.get("rgb_setting_font"), fontsize=22, fontname=plot_settings.get("font_setting"), pad=30)
             plot_obj.yticks(color=plot_settings.get("rgb_setting_font"), fontname=plot_settings.get("font_setting"), fontsize=13)
@@ -520,11 +520,11 @@ class VisualizationOperations:
 
         # Add github and other credentials
         league_name = plot_settings.get("league_name")
-        images_dir_relative = grab_path_relative_to_root("images/", relative=True)
+        images_dir_relative = grab_path_relative_to_root("images/", relative=True, create_if_nonexistent=True)
         add_logo(f'{images_dir_relative}/github-mark-white.png', 0.08, 0.05, 0.02)
         add_logo(f'{images_dir_relative}/bar-graph.png', 0.89, 0.31, 0.12)
         add_logo(f'{images_dir_relative}/FPL_Fantasy_2.png', 0.88, 0.09, 0.16)
-        figs_dir_relative = grab_path_relative_to_root(f"figures/{league_name}", relative=True)
+        figs_dir_relative = grab_path_relative_to_root(f"figures/{league_name}", relative=True, create_if_nonexistent=True)
         plot_obj.savefig(f'{figs_dir_relative}/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
 
     def export_all_league_stat_figures(self):
@@ -567,7 +567,7 @@ class VisualizationOperations:
                 ]),
         }
         
-        for key in ['rank_history', 'entry_history']:
+        for key in ['rank_history', 'total_points']:
             self._process_plot_functions(plt, plot_settings, total_player_data, custom_protocol=key)
 
 #========================================================================================================================================================================================
