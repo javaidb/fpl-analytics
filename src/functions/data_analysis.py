@@ -66,26 +66,35 @@ class DataAnalytics:
             home_away_info = player_fixture_data['is_home']
             difficulty_ratings = player_fixture_data['fdrs']
 
-            # Weighing factors for the rating
-            difficulty_weights = {1: 4.5, 2: 4, 3: 3, 4: 1.5, 5: 0.5}  # Higher difficulty means a tougher match
-            home_weight = 1.2  # Weight for home games
+            if not home_away_info or not difficulty_ratings:
+                player_ratings[int(player_id)] = {'score': None}
+            else:
+                # Weighing factors for the rating
+                difficulty_weights = {1: 4.5, 2: 4, 3: 3, 4: 1.5, 5: 0.5}  # Higher difficulty means a tougher match
+                home_weight = 1.2  # Weight for home games
 
-            # Calculate the weighted sum of difficulty ratings based on home/away
-            weighted_sum = sum(difficulty_weights[rating] * (home_weight if location == 'H' else 1)
-                            for rating, location in zip(difficulty_ratings, home_away_info))
-            
-            # Calculate the average weighted difficulty rating
-            average_weighted_difficulty = weighted_sum / len(difficulty_ratings)
+                # Calculate the weighted sum of difficulty ratings based on home/away
+                weighted_sum = sum(difficulty_weights[rating] * (home_weight if location == 'H' else 1)
+                                for rating, location in zip(difficulty_ratings, home_away_info))
+                
+                # Calculate the average weighted difficulty rating
+                average_weighted_difficulty = weighted_sum / len(difficulty_ratings)
 
-            # Normalize the average weighted difficulty to get the rating in the range of 1 to 10
-            min_weighted_difficulty = min(difficulty_weights.values())
-            max_weighted_difficulty = max(difficulty_weights.values())
-            normalized_rating = ((average_weighted_difficulty - min_weighted_difficulty)
-                                / (max_weighted_difficulty - min_weighted_difficulty)) * 9 + 1
+                # Normalize the average weighted difficulty to get the rating in the range of 1 to 10
+                min_weighted_difficulty = min(difficulty_weights.values())
+                max_weighted_difficulty = max(difficulty_weights.values())
+                normalized_rating = ((average_weighted_difficulty - min_weighted_difficulty)
+                                    / (max_weighted_difficulty - min_weighted_difficulty)) * 9 + 1
 
-            # Ensure the rating is within the valid range of 1 to 10
-            player_ratings[int(player_id)] = {'score': round(max(1, min(normalized_rating, 10)), 3)}
-        return dict(sorted(player_ratings.items(), key=lambda x: x[1]['score'], reverse=True))
+                # Ensure the rating is within the valid range of 1 to 10
+                player_ratings[int(player_id)] = {'score': round(max(1, min(normalized_rating, 10)), 3)}
+        return dict(
+                    sorted(
+                        player_ratings.items(),
+                        key=lambda x: (x[1]['score'] is None, x[1]['score'] if x[1]['score'] is not None else float('-inf')),
+                        reverse=True
+                    )
+                )
 
 
     def apply_scores_and_compile_prospects(self, list_of_ids: list):
