@@ -1,4 +1,5 @@
 from src.functions.helper_fns import calculate_mean_std_dev, progress_bar_update
+from src.functions.helper_fns import initialize_local_data
 
 from collections import defaultdict, Counter
 from tqdm.notebook import tqdm_notebook
@@ -11,12 +12,20 @@ nest_asyncio.apply()
 class RawDataCompiler:
     def __init__(self, api_parser):
         self.api_parser = api_parser
-        self.raw_data = api_parser.raw_data
         self.master_summary = self.build_master_summary()
+        initialize_local_data(self, [
+            {
+                "function": self.convert_fpl_dict_to_tabular,
+                "attribute_name": "master_summary_tabular",
+                "file_name": f"master_summary_{self.api_parser.season_year_span_id}",
+                "export_path": f"cached_data/fpl/{self.api_parser.season_year_span_id}",
+            }
+        ], update_and_export_data = True)
+        # self.master_summary = self.build_master_summary()
         # self.total_summary = None
-        self.players = pd.json_normalize(self.raw_data['elements'])
-        self.teams = pd.json_normalize(self.raw_data['teams'])
-        self.positions = pd.json_normalize(self.raw_data['element_types'])
+        self.players = pd.json_normalize(self.api_parser.raw_data['elements'])
+        self.teams = pd.json_normalize(self.api_parser.raw_data['teams'])
+        self.positions = pd.json_normalize(self.api_parser.raw_data['element_types'])
         self.team_info = self.get_team_info()
         # self.total_summary = asyncio.run(self.compile_dataframes())
         self.league_data = self.initialize_league_data()
@@ -44,7 +53,7 @@ class RawDataCompiler:
         
         #Compile from element summaries
         is_numeric = lambda s: s.replace('.', '', 1).isdigit() if isinstance(s, str) else isinstance(s, (int, float))
-        for num_iter, entry in enumerate(rel_elem_summaries):
+        for entry in rel_elem_summaries:
             player_id = entry['element']
             round_num = entry['round']
             entry_data = {k: v for k, v in entry.items() if k not in ['element', 'round']}
@@ -57,7 +66,7 @@ class RawDataCompiler:
         #Add additional info from bootstrap raw data
         bootstrap_dict = self.api_parser.raw_data['elements']
         for player_id in consolidated_dict.keys():
-            for raw_data_col in ['team', 'element_type', 'first_name', 'second_name', 'web_name']:
+            for raw_data_col in ['team', 'element_type', 'first_name', 'second_name', 'web_name', 'id']:
                 raw_data_val = next((x[raw_data_col] for x in iter(bootstrap_dict) if x['id'] == player_id))
                 consolidated_dict[player_id][raw_data_col] = raw_data_val
         
@@ -79,6 +88,28 @@ class RawDataCompiler:
 
         return {player_id: dict(data) for player_id, data in consolidated_dict.items()}
     
+    def convert_fpl_dict_to_tabular(self):
+        df_data = []
+        for _, player_data in self.master_summary.items():
+            org_data= {}
+            key_info_to_append = []
+            for col_name, col_data in player_data.items():
+                if isinstance(col_data, list):
+                    if all(isinstance(item, (str, int, float)) for item in col_data):
+                        continue
+                    if all(isinstance(item, tuple) and len(item) == 2 and all(isinstance(sub_item, (str, int, float)) for sub_item in item) for item in col_data):
+                        # print(col_name)
+                        for gw, param_val in col_data:
+                            org_data.setdefault(gw, {}).setdefault(col_name, param_val)
+                elif isinstance(col_data, (str, int, float)):
+                    key_info_to_append.append((col_name, col_data))
+            flattened_org_data = [{**value, 'round': key} for key, value in org_data.items()]
+            df_data.extend(flattened_org_data)
+            for data_per_gw in df_data:
+                for append_col, append_data in key_info_to_append:
+                    data_per_gw[append_col] = append_data
+        return df_data
+
     def initialize_league_data(self):
         
         pseudo_league_data = [
