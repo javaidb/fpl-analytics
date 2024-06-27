@@ -43,6 +43,7 @@ def initialize_local_data(instance, data_list, update_and_export_data = False):
                 "attribute_name": <ENTER ATTRIBUTE NAME>,
                 "file_name": <ENTER FILE NAME>,
                 "export_path": <ENTER DIRECTORY TO FILE>,
+                "update_bool_override": <[OPTIONAL] ENTER UPDATE BOOL FOR SPECIFIC SET TO OVERRIDE GENERAL SETTING>
         }]
     - update_and_export_data (bool): Description of parameter2.
 
@@ -55,11 +56,14 @@ def initialize_local_data(instance, data_list, update_and_export_data = False):
         attribute = item.get('attribute_name')
         file_path = item.get('export_path')
         file_name = item.get('file_name')
+        if "update_bool_override" in item.keys():
+            custom_update_bool = item.get('update_bool_override')
+        else: custom_update_bool = None
         file_path_written = grab_path_relative_to_root(file_path, absolute=True, create_if_nonexistent=True)
         full_path = f'{file_path_written}/{file_name}.json'
 
         if function and attribute and file_path:
-            if update_and_export_data or not os.path.exists(full_path):
+            if update_and_export_data or not os.path.exists(full_path) or custom_update_bool:
                 data = function()
                 output_data_to_json(data, full_path)
             else:
@@ -284,12 +288,12 @@ class GeneralHelperFns:
                 rec = 'VLT+'
         return (rec,difflist)
     
-    def find_best_match(self, input_string, input_team_id: int = None):
+    def find_best_match(self, input_string, input_team_id_list: list = []):
         best_matches = []
         max_score = 0
         dict_list = [{**d, 'concat_name': f"{d['first_name']} {d['second_name']}"} for d in self.unique_player_data]
-        if input_team_id is not None:
-            dict_list = [x for x in dict_list if x["team"] == input_team_id]
+        if len(input_team_id_list) > 0:
+            dict_list = [x for x in dict_list if x["team"] in input_team_id_list]
         # col_names = ['web_name', 'second_name', 'first_name', 'concat_name']
         col_names = ['web_name', 'concat_name']
         for d in dict_list:
@@ -333,6 +337,45 @@ class GeneralHelperFns:
             points_history.append((gameweek, points))
         return points_history
     
+    def grab_user_data(self, user_id: int):
+        user_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.raw_data_parser.season_year_span_id}/user_history", absolute=True, create_if_nonexistent=True)
+        user_data_relative_path_file = f"{user_data_relative_path}/{user_id}.json"
+        if not os.path.exists(user_data_relative_path_file):
+            imported_user_data = {}
+        else:
+            with open(user_data_relative_path_file, 'r') as file:
+                imported_user_data = json.load(file)
+        gameweek_history = imported_user_data['gameweek_history'] if 'gameweek_history' in imported_user_data.keys() else {}
+        recorded_gws = [int(x) for x in gameweek_history.keys()]
+        gw_threshold = int(max(recorded_gws)) - 2 if gameweek_history.keys() else 0 # Will also look for -1 GW before the last recorded GW incase it was improperly determined
+        user_data = self.raw_data_parser.fetch_data_from_api(f'entry/{user_id}/history/')
+        relevant_user_data = [x for x in user_data['current'] if int(x['event']) >= int(gw_threshold)]
+        imported_user_data['past_years_points_history'] = user_data['past']
+        for gw_data in relevant_user_data:
+            gameweek = str(gw_data['event'])
+            for param_name, param_val in gw_data.items():
+                if param_name != 'event':
+                    imported_user_data.setdefault('gameweek_history', {}).setdefault(gameweek, {})
+                    imported_user_data['gameweek_history'][gameweek][param_name] = param_val
+            user_team_data = self.raw_data_parser.fetch_data_from_api(f"entry/{user_id}/event/{gameweek}/picks/")
+            user_team_picks = [x['element'] for x in user_team_data['picks']]
+            user_team_captain = next(x['element'] for x in user_team_data['picks'] if x['is_captain'])
+            imported_user_data.setdefault('gameweek_history', {}).setdefault(gameweek, {}).setdefault('team_id_selection', user_team_picks)
+            imported_user_data.setdefault('gameweek_history', {}).setdefault(gameweek, {}).setdefault('team_id_captain', user_team_captain)
+        output_data_to_json(imported_user_data, user_data_relative_path_file)
+        return imported_user_data
+
+    def grab_user_data_agg(self, user_id: int):
+        user_data = self.grab_user_data(user_id)
+        orig_user_data = user_data['gameweek_history']
+        output_data_agg = {}
+        for gameweek, gw_param_data in orig_user_data.items():
+            for param_name, param_val in gw_param_data.items():
+                output_data_agg.setdefault(param_name, []).append((int(gameweek), param_val))
+        return output_data_agg, user_data['past_years_points_history']
+
+    def grab_active_chip_from_gw_and_id(self, user_id, gameweek):
+        return self.raw_data_parser.fetch_data_from_api(f"entry/{user_id}/event/{gameweek}/picks/")['active_chip']
 
     def get_rank_data(self, league_id):
         standings_data = self.raw_data_parser.fetch_data_from_api(f'leagues-classic/{league_id}/standings/')
@@ -342,17 +385,25 @@ class GeneralHelperFns:
         users = []
         for user in standings_data['standings']['results']:
             user_id = user['entry']
-            user['entry_history'] = self.get_player_points_history(user_id)
+            user_data_this_szn, user_data_last_szn = self.grab_user_data_agg(user_id)
+            for user_param_key, param_vals in user_data_this_szn.items():
+                user[user_param_key] = param_vals
+            user['past_years'] = user_data_last_szn
+            # user['entry_history'] = self.get_player_points_history(user_id)
             users.append(user)
         for user in users:
-            rank_history = []
-            sorted_players = sorted(users, key=lambda x: x['entry_history'][0][1], reverse=True)
-            for round_num in range(1, len(user['entry_history']) + 1):
-                round_scores = [(p['entry'], p['entry_history'][round_num - 1][1]) for p in sorted_players]
+            rank_history, chip_history = [], []
+            sorted_players = sorted(users, key=lambda x: x['total_points'][0][1], reverse=True)
+            for round_num in range(1, len(user['total_points']) + 1):
+                round_scores = [(p['entry'], p['total_points'][round_num - 1][1]) for p in sorted_players]
                 round_scores.sort(key=lambda x: x[1], reverse=True)
                 ranks = {player[0]: rank + 1 for rank, player in enumerate(round_scores)}
                 rank_history.append((round_num, ranks[user['entry']]))
+                chip_history.append((round_num, self.grab_active_chip_from_gw_and_id(user['entry'], round_num)))
             user['rank_history'] = rank_history
+            user['chip_history'] = chip_history
+        league_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.raw_data_parser.season_year_span_id}/league_user_stats", absolute=True, create_if_nonexistent=True)
+        output_data_to_json(users, f"{league_data_relative_path}/{league_id}.json")
         return users, last_updated_time, league_name
     
     #========================== Visualization ==========================
