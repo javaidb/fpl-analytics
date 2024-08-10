@@ -12,3 +12,10 @@ notebooks/sandbox.ipynb
 
 # Ignore data file with personal info entered
 src/config/data.json
+
+# Ignore cached files from notebooks
+cached_data/
+
+# Ignore custom generated images/figures
+figures/
+images/
