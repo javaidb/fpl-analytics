@@ -26,5 +26,8 @@ In order to get started:
 
 - Clone this repository to your local machine.
 - Within src/config, make relevant changes within data_template.json AND rename data.json.
+   - "beacon_team_ids" - a custom feature to include rivals you would like to measure your team against, typically those with demonstrated success.
+   - "personal_team_id: - erntry to include your personal FPL team ID (can be obtained through official FPL website)
+   - "personal_league_ids" - used to track statistics and ranks within leagues your FPL team belongs to (or whichever is entered within "personal_team_id"
 - Navigate to notebooks folder and open "visualize_metrics" within jupyter environment. Visualization and consolidation of FPL details are implemented through here.
 - To execute, simply hit run all.
