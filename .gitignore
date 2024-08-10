@@ -10,10 +10,12 @@ __pycache__/
 notebooks/development/
 notebooks/sandbox.ipynb
 
-#Ignore cached data
-cached_data/
-
 # Ignore data file with personal info entered
 src/config/data.json
-images/
+
+# Ignore cached files from notebooks or elsewhere
+cached_data/
+
+# Ignore custom generated images/figures
 figures/
+images/
