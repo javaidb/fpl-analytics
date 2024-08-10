@@ -20,3 +20,11 @@ Add badges from somewhere like: [shields.io](https://shields.io/)
 
 [![IBM License](https://img.shields.io/badge/Certificate_ML-IBM-green.svg)](https://www.credly.com/badges/6d82b78c-cade-4a4c-94cb-b7f89e142350/public_url)
 
+## Usage
+
+In order to get started:
+
+- Clone this repository to your local machine.
+- Within src/config, make relevant changes within data_template.json AND rename data.json.
+- Navigate to notebooks folder and open "visualize_metrics" within jupyter environment. Visualization and consolidation of FPL details are implemented through here.
+- To execute, simply hit run all.
