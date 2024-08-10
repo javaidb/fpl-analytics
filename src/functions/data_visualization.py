@@ -22,62 +22,6 @@ class VisualizationOperations:
         self.data_analytics = data_analytics
         self.export_all_league_stat_figures()
 
-    #========================== Plot data ==========================
-
-
-    # def plot_multi_stats(self,param,dataset,values,remove_FPL15 = False):
-    #     df = self.data_parser.total_summary.copy()
-    #     if param not in df.columns:
-    #         print(f"Incorrect 'param' format, should be one of: {list(df.columns)}")
-    #         return
-    #     if dataset in ['specialized','myteam']:
-    #         if dataset == 'specialized':
-    #             pos = values[0]
-    #             lookback = values[1]
-    #             num_players = values[2]
-    #             df = df.loc[df['position'] == pos]
-    #             if remove_FPL15:
-    #                 df = df.loc[~df['id_player'].isin(self.data_analytics.optimized_personal_team_df.id.to_list())]
-    #         elif dataset == 'myteam':
-    #             pos = values[0]
-    #             lookback = 6
-    #             df = df.loc[(df['id_player'].isin(self.data_analytics.optimized_personal_team_df.id.to_list())) & (df['position'] == pos)]
-    #             num_players = len(df)
-    #     def average_last(lst):
-    #         return sum(lst[-lookback:]) / lookback
-    #     df[f"{param}_avg"] = df.apply(lambda x: average_last(x[param]), axis = 1)
-    #     df_sorted = df.sort_values(by=f"{param}_avg", ascending=False).head(num_players)
-    #     data = df_sorted[['id_player','player','round',param,f"{param}_avg"]]
-    #     data = data.reset_index(drop = True)
-    #     num_cols = min(7,len(data))
-    #     num_rows = (len(data) + 2) // num_cols
-    #     fig = make_subplots(rows=num_rows, cols=num_cols, subplot_titles=data['player'].tolist())
-    #     for i, d in data.iterrows():
-    #         row = i // num_cols + 1
-    #         col = i % num_cols + 1
-    #         color = self.helper_fns.fetch_single_team_color(self.helper_fns.grab_player_team_id(d['id_player']))
-    #         team = self.helper_fns.grab_player_team(d['id_player'])
-    #         fig.add_trace(go.Scatter(x=d['round'], y=d[param], name = team, mode="markers+lines", line=dict(color=color), marker=dict(color=color)), row=row, col=col)
-    #         fig.update_xaxes(title_text='GW', row=row, col=col)
-    #         if param == 'history':
-    #             fig.add_hrect(y0=-1, y1=4, line_width=0, fillcolor="red", opacity=0.2, row=row, col=col)
-    #             fig.add_hrect(y0=4, y1=6, line_width=0, fillcolor="yellow", opacity=0.2, row=row, col=col)
-    #             fig.add_hrect(y0=6, y1=9, line_width=0, fillcolor="green", opacity=0.2, row=row, col=col)
-    #             fig.add_hrect(y0=9, y1=max(d[param])+2, line_width=0, fillcolor="blue", opacity=0.2, row=row, col=col)
-    #         else:
-    #             fig.add_hline(y=d[f"{param}_avg"], line_dash='dot', line_width=2, line_color='black', row=row, col=col)
-    #         fig.update_xaxes(nticks = 6, row=row, col=col)
-    #         fig.update_yaxes(nticks = 6, row=row, col=col)
-    #     fig.update_layout(height=350*(num_rows), width=350*num_cols)
-    #     fig.update_layout(title=f'{param} vs GW',showlegend=False)
-    #     fig.update_xaxes(title='GW')
-    #     fig.update_yaxes(title=param)
-    #     fig.show()
-    #     return
-
-    # def plot_individual_stats(self,player_name,paramlist):
-    #     return
-
     def grab_ownership_count_str(self, player_id: int, league_name, format_color):
         compiled_ownership = next(x["summary"] for x in iter(self.data_grabber.league_data) if x["name"] == str(league_name))
         relevant_player_ids = compiled_ownership["players"]

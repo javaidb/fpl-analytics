@@ -404,35 +404,7 @@ class GeneralHelperFns:
             user['chip_history'] = chip_history
         league_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.raw_data_parser.season_year_span_id}/league_user_stats", absolute=True, create_if_nonexistent=True)
         output_data_to_json(users, f"{league_data_relative_path}/{league_id}.json")
-        return users, last_updated_time, league_name
-    
-    #========================== Visualization ==========================
-
-    def fetch_single_team_color(team_id):
-        team_colors = {
-            1: '#DE0202',   # Arsenal
-            2: '#75AADB',   # Aston Villa
-            3: '#DA291C',   # Bournemouth
-            4: '#FDB913',   # Brentford
-            5: '#0057B8',   # Brighton & Hove Albion
-            6: '#FFD700',   #Burnley
-            7: '#034694',   # Chelsea
-            8: '#1B458F',   # Crystal Palace
-            9: '#003399',   # Everton
-            10: '#F5A646',  # Fulham
-            11: '#C8102E',  # Liverpool
-            12: '#0053A0',  # Luton Town
-            13: '#6CABDD',  # Manchester City
-            14: '#DA291C',  # Manchester United
-            15: '#241F20',  # Newcastle United
-            16: '#BD1E2C',  # Nottingham Forest
-            17: '#D71920',  # Sheffield United
-            18: '#001C58',  # Tottenham Hotspur
-            19: '#7A263A',  # West Ham United
-            20: '#FDB913'   # Wolverhampton Wanderers
-        }
-        return team_colors[team_id]
-    
+        return users, last_updated_time, league_name    
 
     #========================== Print Statements ==========================
 

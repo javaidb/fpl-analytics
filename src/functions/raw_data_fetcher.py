@@ -281,19 +281,6 @@ class UnderstatFetcher:
                 "export_path": f"cached_data/understat/{self.fpl_api_parser.season_year_span_id}/players"
              }
         ], update_and_export_data)
-        # self.understat_team_data = self._build_understat_team_data() if update_bool else 
-        # self.understat_to_fpl_team_data = self._match_fpl_to_understat_teams()
-        # self.understat_team_shot_data = self._build_understat_team_shot_data()
-        # self.understat_team_match_data = self._build_understat_team_match_data()
-
-        # self.understat_player_data = self._build_understat_player_data()
-        # self.understat_to_fpl_player_data = self._match_fpl_to_understat_players()
-
-        # self.understat_player_shot_data_raw = self._build_understat_player_shot_data()
-
-        # self.understat_player_shot_data_group = self._compile_understat_player_shot_data()
-
-        # self.understat_player_match_data = self._build_understat_player_match_data()
 
 #================================================================================================================================================================
 #================================================================ BUILD UNDERSTAT TEAM DATA =====================================================================
