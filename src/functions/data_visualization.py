@@ -14,16 +14,13 @@ import statistics
 from src.config import config
 from src.functions.data_exporter import grab_path_relative_to_root
 
-class VisualizationOperations:
+class NotebookDataVisualizer:
     
-    def __init__(self, data_grabber, data_analytics):
-        self.data_grabber = data_grabber
-        self.helper_fns = data_grabber.helper_fns
+    def __init__(self, data_analytics):
         self.data_analytics = data_analytics
-        self.export_all_league_stat_figures()
 
     def grab_ownership_count_str(self, player_id: int, league_name, format_color):
-        compiled_ownership = next(x["summary"] for x in iter(self.data_grabber.league_data) if x["name"] == str(league_name))
+        compiled_ownership = next(x["summary"] for x in iter(self.data_analytics.helper_fns.league_data) if x["name"] == str(league_name))
         relevant_player_ids = compiled_ownership["players"]
 
         id_count = 0 if player_id not in relevant_player_ids.keys() else relevant_player_ids[player_id]
@@ -104,7 +101,7 @@ class VisualizationOperations:
         return "#" + "".join("%02x" % round(c * 255) for c in self.calc_rgb_from_colors_n_weights(ascii_lower, ascii_upper, weight))
 
     def compile_gradient_color_str(self, input_vals, input_param, custom_scheme=None):
-        param_bins = self.helper_fns.grab_bins_from_param(input_param)
+        param_bins = self.data_analytics.helper_fns.grab_bins_from_param(input_param)
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'gradient', 'rgb', custom_scheme)
     #     print(f'{input_vals} {param_bins} {ascii_bins}')
@@ -130,7 +127,7 @@ class VisualizationOperations:
         background-color ANSI escape code for the cell based on the value's
         position between the minimum and maximum.
         """
-        param_bins = self.helper_fns.grab_bins_from_param(input_param)
+        param_bins = self.data_analytics.helper_fns.grab_bins_from_param(input_param)
         is_numeric = lambda s: s.replace('.', '', 1).isdigit() if isinstance(s, str) else isinstance(s, (int, float))
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'static', 'ansi', custom_scheme)
@@ -156,7 +153,7 @@ class VisualizationOperations:
         gameweek_special_cases = highlight_blanks_and_gameweeks_from_data(all_fixture_data)
         
         fdr_color_scheme = config.FDR_COLOR_SCHEMES
-        dgws = list(self.helper_fns.special_gws["dgws"].keys())
+        dgws = list(self.data_analytics.helper_fns.special_gws["dgws"].keys())
         
         one_white_space = ' '
         no_space = ''
@@ -179,9 +176,9 @@ class VisualizationOperations:
                     mgw_count += 1
                     if mgw_count == 1: space_between_fixtures = no_space
                     
-                fdr = self.helper_fns.team_rank(gw_data['opponent_team'])
+                fdr = self.data_analytics.helper_fns.team_rank(gw_data['opponent_team'])
                 rgb_tuple = fdr_color_scheme[fdr]
-                team = self.helper_fns.grab_team_name_short(gw_data['opponent_team'])
+                team = self.data_analytics.helper_fns.grab_team_name_short(gw_data['opponent_team'])
                 loc = 'H' if gw_data['is_home'] else 'A'
                 
                 printstring += f"\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m{spacing}{team} ({loc}){spacing}{xtra}\x1b[0m{space_between_fixtures}"
@@ -220,7 +217,7 @@ class VisualizationOperations:
         fdr_color_scheme = config.FDR_COLOR_SCHEMES
         printstring = ''
         for opponent_team_id in input_data:
-            opponent_fdr = self.helper_fns.fdr_data[opponent_team_id]
+            opponent_fdr = self.data_analytics.helper_fns.fdr_data[opponent_team_id]
             rgb_tuple = fdr_color_scheme[opponent_fdr]
             printstring += f'\x1b[48;2;{rgb_tuple[0]};{rgb_tuple[1]};{rgb_tuple[2]}m  \x1b[0m'
         return printstring
@@ -270,8 +267,8 @@ class VisualizationOperations:
 
     def build_player_tabular_summary(self, player_ids: list, param_spread: int = 5):
 
-        compiled_player_data = self.helper_fns.compile_player_data(player_ids)
-        sliced_player_data = self.helper_fns.slice_player_data(compiled_player_data, param_spread)
+        compiled_player_data = self.data_analytics.helper_fns.compile_player_data(player_ids)
+        sliced_player_data = self.data_analytics.helper_fns.slice_player_data(compiled_player_data, param_spread)
         seq_map = {'GKP':0, 'DEF':1, 'MID':2, 'FWD':3}
         sliced_player_data = sorted(sliced_player_data, key=lambda x: (seq_map[x['pos_singular_name_short']], -statistics.mean(x['total_points'])))
         plot_player_data = self.transform_player_data_for_vis_pt(sliced_player_data)
@@ -280,7 +277,7 @@ class VisualizationOperations:
 
     #     table_cols = ['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆₁ₖ','☆₁₀ₖ','☆₁₀₀ₖ','☆','Upcoming Fixtures']
         table_cols = ['Position', 'Team', 'Player', 'Cost', 'Past FDRs', 'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes']
-        for league_info in self.data_grabber.league_data:
+        for league_info in self.data_analytics.helper_fns.league_data:
             table_cols += [league_info["symbol"]]
         table_cols += ['Upcoming Fixtures']
         tab = PrettyTable(table_cols)
@@ -294,9 +291,9 @@ class VisualizationOperations:
             temp_tab_row = []
             for col_name in cols_of_interest:
                 temp_tab_row.append(player_data[col_name])
-            for league_info in self.data_grabber.league_data:
+            for league_info in self.data_analytics.helper_fns.league_data:
                 temp_tab_row.append(self.grab_ownership_count_str(int(float((player_data['id']))), league_name=league_info["name"] , format_color='buy'))
-            temp_tab_row.append(self.compile_n_format_upcoming_fixtures_for_vis(self.helper_fns.grab_upcoming_fixtures([player_id], 4))[player_id])
+            temp_tab_row.append(self.compile_n_format_upcoming_fixtures_for_vis(self.data_analytics.helper_fns.grab_upcoming_fixtures([player_id], 4))[player_id])
             tab.add_row(temp_tab_row)
             prev_position = position
         print(tab)
@@ -310,73 +307,58 @@ class VisualizationOperations:
         self.build_player_tabular_summary(player_ids=values)
         return
 
-    # def replacement_summary(self, net_limit = True):
-    #     net_spend_limit = round(self.api_parser.personal_fpl_raw_data['total_points']['bank']/10, 2)
-    #     tab = PrettyTable(['FPL15 Player','Position','FPL15 ICT','FPL15 xGI','FPL15 xGC','Replacement','Team','Past FDRs','ICT','xGI','xGC','Net Spend','Upcoming Fixtures'])
-    #     if net_limit:
-    #         nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement'] if d[-1] <= net_spend_limit]
-    #     else:
-    #         nets = [d[-1] for inner_dict in self.my_dict.values() for d in inner_dict['replacement']]
-    #     for key in self.my_dict:
-    #         FPL15_player_name = key
-    #         comp_dict = self.my_dict[key]
-    #         replacements = comp_dict['replacement']
-    #         sorted_replacements = sorted(replacements, key=lambda x: x[0]['history'][0], reverse=True)
-    #         count = 0
-    #         for r in sorted_replacements:
-    #             position = comp_dict['stats']['position']
-    #             name = r[0]['name']
-    #             team_id = self.helper_fns.grab_player_team_id(r[0]['id'])
-    #             net = r[-1]
-    #             if net_limit:
-    #                 cond = (net <= net_spend_limit)
-    #             else:
-    #                 cond = True
-    #             if cond:
-    #                 if count == 0:
-    #                     tab.add_row(['']*13)
-    #                     FPL15_ICT = self.compile_static_color_str(comp_dict['stats']['ict'],'ict')
-    #                     FPL15_xGI = self.compile_static_color_str(comp_dict['stats']['xGI'],'xGI')
-    #                     if position == 'DEF':
-    #                         FPL15_xGC = round(comp_dict['stats']['xGC'][0],2)
-    #                     FPL15_pos = position
-    #                 else:
-    #                     FPL15_player_name, FPL15_pos, FPL15_ICT, FPL15_xGI, FPL15_xGC = '','','','',''
-    #                 count += 1
-    #                 if position == 'DEF':
-    #                     tab.add_row([FPL15_player_name,
-    #                                  FPL15_pos,
-    #                                  FPL15_ICT,
-    #                                  FPL15_xGI,
-    #                                  FPL15_xGC,
-    #                                  name,
-    #                                  self.grab_color_from_team_str(self.helper_fns.grab_team_name_short(team_id)),
-    #                                  self.get_past_fixtures_colors(team_id,6),
-    #                                  self.compile_static_color_str(r[0]['ict'],'ict'),
-    #                                  self.compile_static_color_str(r[0]['xGI'],'xGI'),
-    #                                  round(r[0]['xGC'][0],2),
-    #                                  self.compile_grad_color_str(net,min(nets),0,max(nets)),
-    #                                  self.get_colored_fixtures(self.helper_fns.grab_player_team_id(r[0]['id']),5)])
-    #                 else:
-    #                     tab.add_row([FPL15_player_name,
-    #                                  FPL15_pos,
-    #                                  FPL15_ICT,
-    #                                  FPL15_xGI,
-    #                                  '-',
-    #                                  name,
-    #                                  self.grab_color_from_team_str(self.helper_fns.grab_team_name_short(team_id)),
-    #                                  self.get_past_fixtures_colors(team_id,6),
-    #                                  self.compile_static_color_str(r[0]['ict'],'ict'),
-    #                                  self.compile_static_color_str(r[0]['xGI'],'xGI'),
-    #                                  '-',
-    #                                  self.compile_grad_color_str(net,min(nets),0,max(nets)),
-    #                                  self.get_colored_fixtures(self.helper_fns.grab_player_team_id(r[0]['id']),5)])
-    #     tab.align["Upcoming Fixtures"] = "l"
-    #     print(tab)
+class FigureExporter():
+    
+    def __init__(self, fpl_data_analytics):
+        self.data_analytics = fpl_data_analytics
+        self._export_all_league_stat_figures()
 
 #========================================================================================================================================================================================
 #============================================================== FIGURE EXPORTS OUTLINING LEAGUE RANK/POINT SPREAD ACROSS GWS ============================================================
 #========================================================================================================================================================================================
+
+    def _export_all_league_stat_figures(self):
+        for league_id in self.data_analytics.helper_fns.league_ids:
+            self._export_league_stat_figures(league_id)
+
+    def _export_league_stat_figures(self, league_id: int):
+        total_player_data, last_update_time, league_name = self.data_analytics.helper_fns.get_rank_data(league_id)
+        #In order to make league figure reasonable, only keep top 20 players
+        total_player_data = total_player_data[:20]
+        text_box_writing = f'Last update time: {last_update_time}'
+        plot_settings = {
+            "league_name": league_name,
+            "league_id": league_id,
+            "font_setting": 'Montserrat',
+            "rights_text": "All rights reserved by the Premier League and its affiliates. Information usage solely for personal, non-commercial purposes abiding by terms and conditions set by the Premier League, including compliance with applicable laws and regulations regarding data usage and intellectual property rights.",
+            "wrapped_text":  textwrap.fill(text_box_writing, width=30),  # Wrap the text to fit within 30 characters per line
+            "rgb_setting_bg": (0.15, 0.15, 0.15),
+            "rgb_setting_grid":  (0.2, 0.2, 0.2),
+            "rgb_setting_font":  (1.0, 1.0, 0.95),
+            "fig_size":  (20, 10),
+            "color_cycle":  cycle([
+                (0.12156862745098039, 0.4666666666666667, 0.7058823529411765),
+                (1.0, 0.4980392156862745, 0.054901960784313725),
+                (0.17254901960784313, 0.6274509803921569, 0.17254901960784313),
+                (0.8392156862745098, 0.15294117647058825, 0.1568627450980392),
+                (0.5803921568627451, 0.403921568627451, 0.7411764705882353),
+                (0.5490196078431373, 0.33725490196078434, 0.29411764705882354),
+                (0.8901960784313725, 0.4666666666666667, 0.7607843137254902),
+                (0.4980392156862745, 0.4980392156862745, 0.4980392156862745),
+                (0.7372549019607844, 0.7411764705882353, 0.13333333333333333),
+                (0.09019607843137255, 0.7450980392156863, 0.8117647058823529),
+                (0.984313725490196, 0.6862745098039216, 0.8941176470588236),
+                (1.0, 0.8431372549019608, 0.7019607843137254),
+                (0.7019607843137254, 0.8705882352941177, 0.4117647058823529),
+                (0.9, 0.3, 0.6),
+                (0.6, 0.9, 0.6),  
+                (0.4, 0.4, 0.4),  
+                (0.8, 0.4, 0.4)  
+                ]),
+        }
+        
+        for key in ['rank_history', 'total_points']:
+            self._process_plot_functions(plt, plot_settings, total_player_data, custom_protocol=key)
 
     def _process_plot_functions(self, plot_obj, plot_settings: dict, input_data: list, custom_protocol=None):
         plot_obj.rcParams['font.family'] = plot_settings.get("font_setting")
@@ -450,17 +432,17 @@ class VisualizationOperations:
         plot_obj.gca().spines['right'].set_color(plot_settings.get("rgb_setting_font"))
         
         if custom_protocol == "rank_history":
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 0.5), 0.1, 1, color='gold', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_analytics.helper_fns.latest_gw, 0.5), 0.1, 1, color='gold', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 1.5), 0.1, 1, color='silver', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_analytics.helper_fns.latest_gw, 1.5), 0.1, 1, color='silver', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 2.5), 0.1, 1, color='orange', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_analytics.helper_fns.latest_gw, 2.5), 0.1, 1, color='orange', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, 3.5), 0.1, len(input_data)-4, color='green', alpha=0.2)
+            rectangle = plot_obj.Rectangle((self.data_analytics.helper_fns.latest_gw, 3.5), 0.1, len(input_data)-4, color='green', alpha=0.2)
             fig.gca().add_patch(rectangle)
-            rectangle = plot_obj.Rectangle((self.data_grabber.latest_gw, len(input_data)-0.5), 0.1, 1, color='red', alpha=0.5)
+            rectangle = plot_obj.Rectangle((self.data_analytics.helper_fns.latest_gw, len(input_data)-0.5), 0.1, 1, color='red', alpha=0.5)
             fig.gca().add_patch(rectangle)
-            # plot_obj.gca().add_patch(plot_obj.Rectangle((self.data_grabber.latest_gw + 1, 14), 0.001, 5, color = (1, 1, 0.8), alpha = 0.99, zorder = 10))
+            # plot_obj.gca().add_patch(plot_obj.Rectangle((self.data_analytics.helper_fns.latest_gw + 1, 14), 0.001, 5, color = (1, 1, 0.8), alpha = 0.99, zorder = 10))
 
         # Add github and other credentials
         league_name = plot_settings.get("league_name")
@@ -471,48 +453,6 @@ class VisualizationOperations:
         figs_dir_relative = grab_path_relative_to_root(f"figures/{league_name}", relative=True, create_if_nonexistent=True)
         plot_obj.savefig(f'{figs_dir_relative}/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
 
-    def export_all_league_stat_figures(self):
-        for league_id in self.helper_fns.league_ids:
-            self.export_league_stat_figures(league_id)
-
-    def export_league_stat_figures(self, league_id: int):
-        total_player_data, last_update_time, league_name = self.helper_fns.get_rank_data(league_id)
-        #In order to make league figure reasonable, only keep top 20 players
-        total_player_data = total_player_data[:20]
-        text_box_writing = f'Last update time: {last_update_time}'
-        plot_settings = {
-            "league_name": league_name,
-            "league_id": league_id,
-            "font_setting": 'Montserrat',
-            "rights_text": "All rights reserved by the Premier League and its affiliates. Information usage solely for personal, non-commercial purposes abiding by terms and conditions set by the Premier League, including compliance with applicable laws and regulations regarding data usage and intellectual property rights.",
-            "wrapped_text":  textwrap.fill(text_box_writing, width=30),  # Wrap the text to fit within 30 characters per line
-            "rgb_setting_bg": (0.15, 0.15, 0.15),
-            "rgb_setting_grid":  (0.2, 0.2, 0.2),
-            "rgb_setting_font":  (1.0, 1.0, 0.95),
-            "fig_size":  (20, 10),
-            "color_cycle":  cycle([
-                (0.12156862745098039, 0.4666666666666667, 0.7058823529411765),
-                (1.0, 0.4980392156862745, 0.054901960784313725),
-                (0.17254901960784313, 0.6274509803921569, 0.17254901960784313),
-                (0.8392156862745098, 0.15294117647058825, 0.1568627450980392),
-                (0.5803921568627451, 0.403921568627451, 0.7411764705882353),
-                (0.5490196078431373, 0.33725490196078434, 0.29411764705882354),
-                (0.8901960784313725, 0.4666666666666667, 0.7607843137254902),
-                (0.4980392156862745, 0.4980392156862745, 0.4980392156862745),
-                (0.7372549019607844, 0.7411764705882353, 0.13333333333333333),
-                (0.09019607843137255, 0.7450980392156863, 0.8117647058823529),
-                (0.984313725490196, 0.6862745098039216, 0.8941176470588236),
-                (1.0, 0.8431372549019608, 0.7019607843137254),
-                (0.7019607843137254, 0.8705882352941177, 0.4117647058823529),
-                (0.9, 0.3, 0.6),
-                (0.6, 0.9, 0.6),  
-                (0.4, 0.4, 0.4),  
-                (0.8, 0.4, 0.4)  
-                ]),
-        }
-        
-        for key in ['rank_history', 'total_points']:
-            self._process_plot_functions(plt, plot_settings, total_player_data, custom_protocol=key)
 
 #========================================================================================================================================================================================
 #========================================================================================================================================================================================
