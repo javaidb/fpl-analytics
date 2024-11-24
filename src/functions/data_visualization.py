@@ -1,15 +1,10 @@
 from prettytable import PrettyTable
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 from itertools import cycle
 import numpy as np
 import textwrap
 from PIL import Image
 from collections import defaultdict
-import re
-# from dash import dash_table
-# from dash_table import DataTable
 import statistics
 from src.config import config
 from src.functions.data_exporter import grab_path_relative_to_root
@@ -38,7 +33,6 @@ class NotebookDataVisualizer:
 #========================================================================================================================================================================================
 
     def grab_ascii_bins(self, bin_length, ascii_purpose, return_sequence = 'ansi', custom_color_scheme = None):
-        # color_code = '\033[1;30;2m'  # muted grey
         color_map = {
             'red': {'rgb': (1, 0, 0), 'ansi': '\033[1;31m'},
             'green': {'rgb': (0, 1, 0), 'ansi': '\033[1;32m'},
@@ -84,7 +78,6 @@ class NotebookDataVisualizer:
     def grab_gradient_ascii_from_param(self, input_val, param_bins, ascii_bins):
         ordered_bins = tuple(sorted(param_bins))
         ind_lower, ind_upper = (float('-inf'), 0) if input_val < ordered_bins[0] else (len(ordered_bins) - 1, float('inf')) if input_val >= ordered_bins[-1] else next((i, i + 1) for i in range(len(ordered_bins) - 1) if ordered_bins[i] <= input_val < ordered_bins[i + 1])
-    #     print(f'{ind_lower} {ind_upper}')
         if ind_lower == -np.inf:
             weight = 0
             ind_lower, ind_upper = ind_upper,ind_upper+1
@@ -95,7 +88,6 @@ class NotebookDataVisualizer:
             range_upper = param_bins[ind_upper]
             range_lower = param_bins[ind_lower]
             weight = (input_val - range_lower) / (range_upper - range_lower)
-    #     print(f'{ind_lower} {ind_upper} {ascii_bins}')
         ascii_upper = ascii_bins[ind_upper]
         ascii_lower = ascii_bins[ind_lower]
         return "#" + "".join("%02x" % round(c * 255) for c in self.calc_rgb_from_colors_n_weights(ascii_lower, ascii_upper, weight))
@@ -104,7 +96,6 @@ class NotebookDataVisualizer:
         param_bins = self.data_analytics.helper_fns.grab_bins_from_param(input_param)
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'gradient', 'rgb', custom_scheme)
-    #     print(f'{input_vals} {param_bins} {ascii_bins}')
         val_str = ""
         for val in input_vals:
             if param_bins is not None:
@@ -132,7 +123,6 @@ class NotebookDataVisualizer:
         if param_bins is not None:
             ascii_bins = self.grab_ascii_bins(len(param_bins), 'static', 'ansi', custom_scheme)
         val_str = ""
-    #     print(input_vals)
         for val in input_vals:
             if param_bins is not None:
                 color_code = self.grab_static_ascii_from_param(val, param_bins, ascii_bins)
@@ -260,7 +250,6 @@ class NotebookDataVisualizer:
             temp_dict = defaultdict(lambda: defaultdict(list))
             for k,v in player_data.items():
                 temp_dict[k] = self.transform_data_to_str_pt(v, k)
-    #             print(f'{k}: {temp_dict[k]}\n')
             transformed_player_data.append({k: v for k,v in temp_dict.items()})
 
         return [{k: v for k, v in d.items() if v is not None} for d in transformed_player_data]
@@ -275,7 +264,6 @@ class NotebookDataVisualizer:
 
         cols_of_interest = ['pos_singular_name_short', 'team_short_name', 'web_name', 'value', 'opponent_team', 'total_points', 'bps', 'ict_index', 'expected_goal_involvements', 'minutes']
 
-    #     table_cols = ['FPL15 Player','Position','Team','Past FDRs','History','Bonus Points','ICT','xGI','Minutes','xGC','Cost','𝙹𝚀𝚁','𝙶𝚂𝙿','☆₁ₖ','☆₁₀ₖ','☆₁₀₀ₖ','☆','Upcoming Fixtures']
         table_cols = ['Position', 'Team', 'Player', 'Cost', 'Past FDRs', 'History', 'Bonus Points', 'ICT', 'xGI', 'Minutes']
         for league_info in self.data_analytics.helper_fns.league_data:
             table_cols += [league_info["symbol"]]
@@ -301,7 +289,7 @@ class NotebookDataVisualizer:
 
     def display_tabular_summary(self):
         replacements = self.data_analytics.replacement_players
-        beacon_picks = list(self.data_analytics.beacon_effective_ownership.keys())
+        beacon_picks = list(self.data_parser.beacon_effective_ownership.keys())
         values = list(set(replacements).union(set(beacon_picks)))
         values = [x for x in values if x not in list(self.data_analytics.personal_team_data.keys())]
         self.build_player_tabular_summary(player_ids=values)

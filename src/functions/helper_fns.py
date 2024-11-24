@@ -1,7 +1,6 @@
 import os
 import ast
 import difflib
-import pandas as pd
 import numpy as np
 
 from src.functions.data_exporter import output_data_to_json, grab_path_relative_to_root
@@ -99,14 +98,6 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
      
     def grab_player_bps(self, idx, include_gws=False):
         return [param_val if not include_gws else (gw, param_val) for gw, param_val in self.compile_player_data([idx])[idx]['bps']]
-     
-    # def grab_player_full90s(self, idx):
-    #     name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fulltime']
-    #     return name.values[-1]
-
-    # def grab_player_full60s(self, idx):
-    #     name = self.data_parser.total_summary.loc[self.data_parser.total_summary['id_player'] == idx]['fullhour']
-    #     return name.values[-1]
 
     def grab_team_id(self, team_name):
         return next(x['id'] for x in self.raw_data['teams'] if x['name'] == team_name)
@@ -162,8 +153,10 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
             return (3.8, 7.0, 13.0)
         else:
             return None
-
-    #========================== Custom Operations ==========================
+    
+#================================================================================================================================================================
+#=================================================================== CUSTOM FUNCTIONS ===========================================================================
+#================================================================================================================================================================
     
     def _compile_fdr_data(self):
 #       #========================== Compile FDRs from team_info ==========================
@@ -271,8 +264,10 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
         elif len(best_matches) == 0:
             return None
     
-    #========================== User Functions ==========================
-    
+#================================================================================================================================================================
+#=================================================================== USER INFO FETCHING =========================================================================
+#================================================================================================================================================================
+         
     def get_player_points_history(self, user_id):
         user_data = self.fetch_data_from_api(f'entry/{user_id}/history/')
         points_history = []

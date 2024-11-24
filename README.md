@@ -20,7 +20,6 @@ In order to get started:
  - [Fantasy Premier League](https://fantasy.premierleague.com/)
  - [Understat](https://understat.com/)
 
-
 ## Authors
 
 - [@javaidb](https://www.github.com/javaidb)
@@ -31,4 +30,3 @@ In order to get started:
 Add badges from somewhere like: [shields.io](https://shields.io/)
 
 [![IBM License](https://img.shields.io/badge/Certificate_ML-IBM-green.svg)](https://www.credly.com/badges/6d82b78c-cade-4a4c-94cb-b7f89e142350/public_url)
-

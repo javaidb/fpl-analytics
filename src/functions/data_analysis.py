@@ -35,22 +35,17 @@ class FPLDataAnalytics():
         for idx in list_of_ids:
             full_data[idx] = convert_to_binary([x for x in self.helper_fns.grab_player_hist(idx)])
 
-        # Define the number of time periods to consider
-        time_periods = [6, 4, 2]
-        # Calculate the weighted average score for each player
+        time_periods = [6, 4, 2] # Define the number of time periods to consider
         weights = [0.3, 0.3, 0.4]  # Weights for each time period
 
-        # Calculate mean score for each player for each time period
-        player_mean_scores = {}
+        player_mean_scores = {} # Calculate mean score for each player for each time period
         for player, categories in full_data.items():
             mean_scores = [np.mean(categories[-period:]) for period in time_periods]
             player_mean_scores[player] = mean_scores
         player_ratings = {}
         for player, mean_scores in player_mean_scores.items():
             weighted_average = np.average(mean_scores, weights=weights)
-            player_ratings[player] = {'score': round(weighted_average,2), 
-    #                                   'name': grab_player_name(player)
-                                    }
+            player_ratings[player] = {'score': round(weighted_average,2)}
         return dict(sorted(player_ratings.items(), key=lambda x: x[1]['score'], reverse=True))
 
     def score_players_on_fixtures(self, list_of_ids: list) -> dict:
@@ -63,7 +58,6 @@ class FPLDataAnalytics():
         player_ratings = {}
         for player_id, player_fixture_data in full_data.items():
         
-    #         upcoming_fixture_list = player_fixture_data['opponent_teams']
             home_away_info = player_fixture_data['is_home']
             difficulty_ratings = player_fixture_data['fdrs']
 

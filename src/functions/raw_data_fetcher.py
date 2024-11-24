@@ -191,18 +191,14 @@ class FPLFetcher:
         if session:
             headers = {'Accept': 'application/json'}
             async with session.get(f'{config.BASE_URL}/element-summary/{player_id}/', headers=headers) as resp:
-                #Status code implying success
-                if resp.status == 200:
+                if resp.status == 200: #Status code implying success
                     player_data = await resp.json()
                     return player_data
-                elif resp.status == 429:
-                    # Rate limit exceeded, implement backoff
+                elif resp.status == 429: # Rate limit exceeded, implement backoff
                     retry_after = int(resp.headers.get('Retry-After', 5))  # Default to 5 seconds
-                    # print(f"Rate limit exceeded. Retrying after {retry_after} seconds.")
                     await asyncio.sleep(retry_after)
                     return await self.fetch_element_summaries(player_id, session)
-                else:
-                    # Handle non-200 status code
+                else: # Handle non-200 status code
                     print(f"Error: {resp.status} - {resp.reason}")
                     return None
         else:
