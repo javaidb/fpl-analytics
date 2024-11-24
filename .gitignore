@@ -19,3 +19,7 @@ cached_data/
 # Ignore custom generated images/figures
 figures/
 images/
+
+
+# Ignore local archived functions
+src/functions/archived/
