@@ -1,12 +1,13 @@
 import os
 import ast
-import math
 import difflib
 import pandas as pd
 import numpy as np
-import sys
 
 from src.functions.data_exporter import output_data_to_json, grab_path_relative_to_root
+
+from src.functions.data_builder import FPLRawDataCompiler
+from src.functions.raw_data_fetcher import UnderstatFetcher
 
 from collections import defaultdict
 import asyncio
@@ -16,75 +17,19 @@ import json
 # from fuzzywuzzy import fuzz
 # from fuzzywuzzy import process
 
-def calculate_mean_std_dev(data):
-    mean = sum(data) / len(data)
-    var = sum((l - mean) ** 2 for l in data) / len(data)
-    st_dev = math.sqrt(var)
-
-    return mean, st_dev
-
-def progress_bar_update(i, num_iter, complete=False):
-    if not complete:
-        sys.stdout.write(f'\rProcessing {i+1}/4 ' + '.' * (num_iter % 4) + '   ')
-    else:
-        sys.stdout.write('\rProcessing... \x1b[32m\u2714\x1b[0m\n')
-    sys.stdout.flush()
-
-def initialize_local_data(instance, data_list, update_and_export_data = False):
-
-    """
-    Function used to import from local data AND choose to either update it from relevant API endpoints before importing or not
-    (Option chosen as API endpoints such as UnderStat can be computationally expensive if running every time)
-
-    Parameters:
-    - data_list (list): List that contains the following format:
-        [{
-                "function": <ENTER FUNCTION NAME>,
-                "attribute_name": <ENTER ATTRIBUTE NAME>,
-                "file_name": <ENTER FILE NAME>,
-                "export_path": <ENTER DIRECTORY TO FILE>,
-                "update_bool_override": <[OPTIONAL] ENTER UPDATE BOOL FOR SPECIFIC SET TO OVERRIDE GENERAL SETTING>
-        }]
-    - update_and_export_data (bool): Description of parameter2.
-
-    Returns:
-    - N/A: Initializes variables, does not return anything.
-    """
-
-    for item in data_list:
-        function = item.get('function')
-        attribute = item.get('attribute_name')
-        file_path = item.get('export_path')
-        file_name = item.get('file_name')
-        if "update_bool_override" in item.keys():
-            custom_update_bool = item.get('update_bool_override')
-        else: custom_update_bool = None
-        file_path_written = grab_path_relative_to_root(file_path, absolute=True, create_if_nonexistent=True)
-        full_path = f'{file_path_written}/{file_name}.json'
-
-        if function and attribute and file_path:
-            if update_and_export_data or not os.path.exists(full_path) or custom_update_bool:
-                data = function()
-                output_data_to_json(data, full_path)
-            else:
-                with open(full_path, 'r') as file:
-                    data = json.load(file)
-            setattr(instance, attribute, data)
-
-
-class GeneralHelperFns:
-    def __init__(self, raw_data_parser, compiled_data_parser):
-        self.compiled_data_parser = compiled_data_parser
-        self.raw_data_parser = raw_data_parser
-        self.fdr_data = self.compile_fdr_data()
-        self.unique_player_data = self.grab_all_unique_fpl_player_data()
-        self.special_gws = self.grab_blanks_and_dgws()
-        self.personal_fpl_id = self.raw_data_parser.get_personal_fpl_id()
-        self.personal_beacon_ids = self.raw_data_parser.get_beacon_ids()
-        self.league_ids = self.raw_data_parser.get_league_ids()
+class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
+    def __init__(self):
+        super().__init__()
+        print("Assigning FPL helper functions to parsed and consolidated data via FPL.")
+        self.fdr_data = self._compile_fdr_data()
+        self.unique_player_data = self._grab_all_unique_fpl_player_data()
+        self.special_gws = self._grab_blanks_and_dgws()
+        self.personal_fpl_id = self._get_personal_fpl_id()
+        self.personal_beacon_ids = self._get_beacon_ids()
+        self.league_ids = self._get_league_ids()
     
     def compile_player_data(self, id_values: list):
-        return {k:v for k,v in self.compiled_data_parser.master_summary.items() if k in id_values}
+        return {k:v for k,v in self.master_summary.items() if k in id_values}
 
     def slice_player_data(self, compiled_player_data: dict, look_back: int):
 
@@ -110,9 +55,9 @@ class GeneralHelperFns:
 
     #========================== General Parsing ==========================
     
-    def grab_blanks_and_dgws(self):
+    def _grab_blanks_and_dgws(self):
         all_gameweeks = {}
-        for fixture_data in self.raw_data_parser.fixtures:
+        for fixture_data in self.fixtures:
             gameweek = fixture_data['event']
             if gameweek:
                 if gameweek not in all_gameweeks.keys():
@@ -164,31 +109,31 @@ class GeneralHelperFns:
     #     return name.values[-1]
 
     def grab_team_id(self, team_name):
-        return next(x['id'] for x in self.raw_data_parser.raw_data['teams'] if x['name'] == team_name)
+        return next(x['id'] for x in self.raw_data['teams'] if x['name'] == team_name)
 
     def grab_team_name_full(self, team_id):
-        return next(x['name'] for x in self.raw_data_parser.raw_data['teams'] if x['id'] == team_id)
+        return next(x['name'] for x in self.raw_data['teams'] if x['id'] == team_id)
     
     def grab_team_name_short(self, team_id):
-        return next(x['short_name'] for x in self.raw_data_parser.raw_data['teams'] if x['id'] == team_id)
+        return next(x['short_name'] for x in self.raw_data['teams'] if x['id'] == team_id)
 
     def grab_pos_name(self, idx):
-        return next((x['plural_name_short'] for x in iter(self.raw_data_parser.raw_data['element_types']) if x['id'] == idx), None)
+        return next((x['plural_name_short'] for x in iter(self.raw_data['element_types']) if x['id'] == idx), None)
 
     def grab_upcoming_fixtures(self, id_values: list, games_ahead: int = 99, reference_gw: int = None):
         '''
         NB: We enable gw_data['event'] to handle Nonetypes as sometimes there are games that are yet to be rescheduled by the PL, so we remove it until it has been officially announced and updated in API.
         We also need to preserve gameweeks that are considered blanks, as once data is returned without including it there is no information to point to there being a blank outside of external functions.
         '''
-        if reference_gw is None: reference_gw = self.raw_data_parser.latest_gw
-        raw_data = self.raw_data_parser.full_element_summary
+        if reference_gw is None: reference_gw = self.latest_gw
+        raw_data = self.full_element_summary
         def process_fixtures(all_fixtures: list):            
             return [{'gameweek': gw_info['event'], 'team': gw_info['team_h'] if gw_info['is_home'] else gw_info['team_a'], 'opponent_team': gw_info['team_a'] if gw_info['is_home'] else gw_info['team_h'], 'is_home': gw_info['is_home']} for gw_info in all_fixtures if (gw_info['event'] and (gw_info['event'] >= reference_gw+1 and gw_info['event'] <= reference_gw + games_ahead))]
         compiled_player_data = {str(player_id): process_fixtures(raw_data[player_id]['fixtures']) for player_id in sorted(id_values)}
         
         #Handle blanks, which are usually not present at all
         for player_id, player_data in compiled_player_data.items():
-            last_gw = max([x['id'] for x in self.raw_data_parser.raw_data['events']])
+            last_gw = max([x['id'] for x in self.raw_data['events']])
             expected_gws = list(range(reference_gw+1, min(last_gw+1, reference_gw+games_ahead+1)))
             compiled_gws = list({x['gameweek'] for x in player_data})
             gw_conflicts = [gw for gw in expected_gws if gw not in compiled_gws]
@@ -199,8 +144,8 @@ class GeneralHelperFns:
                 
         return compiled_player_data
 
-    def grab_all_unique_fpl_player_data(self):
-        return [{**{k: v for k, v in self.compiled_data_parser.master_summary[x].items() if k in ['first_name', 'second_name', 'web_name', 'pos_singular_name_short', 'team_short_name', 'team']}, 'id': x} for x in self.raw_data_parser.player_ids]
+    def _grab_all_unique_fpl_player_data(self):
+        return [{**{k: v for k, v in self.master_summary[x].items() if k in ['first_name', 'second_name', 'web_name', 'pos_singular_name_short', 'team_short_name', 'team']}, 'id': x} for x in self.player_ids]
 
     def grab_bins_from_param(self, input_param):
         if input_param == 'ict_index':
@@ -220,14 +165,14 @@ class GeneralHelperFns:
 
     #========================== Custom Operations ==========================
     
-    def compile_fdr_data(self):
+    def _compile_fdr_data(self):
 #       #========================== Compile FDRs from team_info ==========================
         init_id = 1
         fdr_data = {}
-        while init_id < len(self.raw_data_parser.player_ids):
-            if init_id in self.raw_data_parser.player_ids:
+        while init_id < len(self.player_ids):
+            if init_id in self.player_ids:
                 null_team_id = self.grab_player_team_id(init_id)
-                player_element_summary = self.raw_data_parser.full_element_summary[init_id]["fixtures"]
+                player_element_summary = self.full_element_summary[init_id]["fixtures"]
                 try:
                     fdr_info = [[([i['team_h'],i['team_a']],i['difficulty']) for i in player_element_summary][0]]
                     fdr_simpl = [((set(x[0]) - {null_team_id}).pop(),x[1]) for x in fdr_info]
@@ -238,9 +183,9 @@ class GeneralHelperFns:
                     pass
             init_id += 10
         init_id = 1
-        while len(fdr_data) < 20 and init_id < len(self.raw_data_parser.player_ids):
+        while len(fdr_data) < 20 and init_id < len(self.player_ids):
             null_team_id = self.grab_player_team_id(init_id)
-            player_element_summary = self.raw_data_parser.full_element_summary[init_id]["fixtures"]
+            player_element_summary = self.full_element_summary[init_id]["fixtures"]
             fdr_info = [([i['team_h'],i['team_a']],i['difficulty']) for i in player_element_summary][:3]
             fdr_simpl = [((set(x[0]) - {null_team_id}).pop(),x[1]) for x in fdr_info]
             for pair in fdr_simpl:
@@ -260,7 +205,7 @@ class GeneralHelperFns:
         return rank
     
     def rem_fixtures_difficulty(self, idx: int):
-        r = asyncio.run(self.raw_data_parser.fetch_element_summaries(idx))
+        r = asyncio.run(self.fetch_element_summaries(idx))
         difflist=[]
         for diff in r['fixtures']:
             difflist.append(diff['difficulty'])
@@ -329,7 +274,7 @@ class GeneralHelperFns:
     #========================== User Functions ==========================
     
     def get_player_points_history(self, user_id):
-        user_data = self.raw_data_parser.fetch_data_from_api(f'entry/{user_id}/history/')
+        user_data = self.fetch_data_from_api(f'entry/{user_id}/history/')
         points_history = []
         for gw_data in user_data['current']:
             gameweek = gw_data['event']
@@ -338,7 +283,7 @@ class GeneralHelperFns:
         return points_history
     
     def grab_user_data(self, user_id: int):
-        user_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.raw_data_parser.season_year_span_id}/user_history", absolute=True, create_if_nonexistent=True)
+        user_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.season_year_span_id}/user_history", absolute=True, create_if_nonexistent=True)
         user_data_relative_path_file = f"{user_data_relative_path}/{user_id}.json"
         if not os.path.exists(user_data_relative_path_file):
             imported_user_data = {}
@@ -348,7 +293,7 @@ class GeneralHelperFns:
         gameweek_history = imported_user_data['gameweek_history'] if 'gameweek_history' in imported_user_data.keys() else {}
         recorded_gws = [int(x) for x in gameweek_history.keys()]
         gw_threshold = int(max(recorded_gws)) - 2 if gameweek_history.keys() else 0 # Will also look for -1 GW before the last recorded GW incase it was improperly determined
-        user_data = self.raw_data_parser.fetch_data_from_api(f'entry/{user_id}/history/')
+        user_data = self.fetch_data_from_api(f'entry/{user_id}/history/')
         relevant_user_data = [x for x in user_data['current'] if int(x['event']) >= int(gw_threshold)]
         imported_user_data['past_years_points_history'] = user_data['past']
         for gw_data in relevant_user_data:
@@ -357,7 +302,7 @@ class GeneralHelperFns:
                 if param_name != 'event':
                     imported_user_data.setdefault('gameweek_history', {}).setdefault(gameweek, {})
                     imported_user_data['gameweek_history'][gameweek][param_name] = param_val
-            user_team_data = self.raw_data_parser.fetch_data_from_api(f"entry/{user_id}/event/{gameweek}/picks/")
+            user_team_data = self.fetch_data_from_api(f"entry/{user_id}/event/{gameweek}/picks/")
             user_team_picks = [x['element'] for x in user_team_data['picks']]
             user_team_captain = next(x['element'] for x in user_team_data['picks'] if x['is_captain'])
             imported_user_data.setdefault('gameweek_history', {}).setdefault(gameweek, {}).setdefault('team_id_selection', user_team_picks)
@@ -375,10 +320,10 @@ class GeneralHelperFns:
         return output_data_agg, user_data['past_years_points_history']
 
     def grab_active_chip_from_gw_and_id(self, user_id, gameweek):
-        return self.raw_data_parser.fetch_data_from_api(f"entry/{user_id}/event/{gameweek}/picks/")['active_chip']
+        return self.fetch_data_from_api(f"entry/{user_id}/event/{gameweek}/picks/")['active_chip']
 
     def get_rank_data(self, league_id):
-        standings_data = self.raw_data_parser.fetch_data_from_api(f'leagues-classic/{league_id}/standings/')
+        standings_data = self.fetch_data_from_api(f'leagues-classic/{league_id}/standings/')
         last_updated_time = standings_data['last_updated_data']
         league_name = standings_data['league']['name']
         # Extract relevant information such as player ranks
@@ -393,16 +338,31 @@ class GeneralHelperFns:
             users.append(user)
         for user in users:
             rank_history, chip_history = [], []
-            sorted_players = sorted(users, key=lambda x: x['total_points'][0][1], reverse=True)
-            for round_num in range(1, len(user['total_points']) + 1):
-                round_scores = [(p['entry'], p['total_points'][round_num - 1][1]) for p in sorted_players]
-                round_scores.sort(key=lambda x: x[1], reverse=True)
-                ranks = {player[0]: rank + 1 for rank, player in enumerate(round_scores)}
-                rank_history.append((round_num, ranks[user['entry']]))
-                chip_history.append((round_num, self.grab_active_chip_from_gw_and_id(user['entry'], round_num)))
+            try:
+                sorted_players = sorted(users, key=lambda x: x['total_points'][0][1], reverse=True)
+                for round_num in range(1, len(user['total_points']) + 1):
+                    try:
+                        round_scores = [] 
+                        for p in sorted_players:
+                            try:
+                                entry_id = p['entry']
+                                entry_points_tup = [t for t in p['total_points'] if t[0] == round_num]
+                                entry_points_val = entry_points_tup[0][1] if entry_points_tup else 0 #Account for cases where someone starts FPL beyond GW1
+                                round_scores.append((entry_id, entry_points_val))
+                            except Exception as e:
+                                print(f"Int error: {e}")
+                        round_scores.sort(key=lambda x: x[1], reverse=True)
+                        ranks = {player[0]: rank + 1 for rank, player in enumerate(round_scores)}
+                        rank_history.append((round_num, ranks[user['entry']]))
+                        chip_history.append((round_num, self.grab_active_chip_from_gw_and_id(user['entry'], round_num)))
+                    except Exception as e:
+                        print(f"Error encountered in acquiring rank for FPL ID '{user['entry']}' (GW {round_num}): {e}")
+                        continue
+            except Exception as e:
+                print(f"Error encountered in acquiring rank: {e}")
             user['rank_history'] = rank_history
             user['chip_history'] = chip_history
-        league_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.raw_data_parser.season_year_span_id}/league_user_stats", absolute=True, create_if_nonexistent=True)
+        league_data_relative_path = grab_path_relative_to_root(f"cached_data/fpl/{self.season_year_span_id}/league_user_stats", absolute=True, create_if_nonexistent=True)
         output_data_to_json(users, f"{league_data_relative_path}/{league_id}.json")
         return users, last_updated_time, league_name    
 
@@ -432,8 +392,8 @@ class GeneralHelperFns:
     def alert_players_with_blanks_dgws(self, input_fpl_team: pd.DataFrame()):
         teams = list(input_fpl_team.team.unique())
         ids = [self.grab_team_id(x) for x in teams]
-        bgws_adj = {k: v for k, v in self.blanks.items() if k > self.raw_data_parser.latest_gw}
-        dgws_adj = {k: v for k, v in self.dgws.items() if k > self.raw_data_parser.latest_gw}
+        bgws_adj = {k: v for k, v in self.blanks.items() if k > self.latest_gw}
+        dgws_adj = {k: v for k, v in self.dgws.items() if k > self.latest_gw}
         if bgws_adj:
             print('\n------------- UPCOMING BLANKS -------------')
             for gw,teams in bgws_adj.items():
@@ -593,18 +553,18 @@ class GeneralHelperFns:
             print(f'{self.helper_fns.grab_player_name(key)} -- {tier}{value}\033[0m / {entries}')
         return
     
-class UnderStatHelperFns:
-    def __init__(self, understat_fetcher):
-        self.api_understat_parser = understat_fetcher
+class UnderStatHelperFns(UnderstatFetcher):
+    def __init__(self, update_bool):
+        super().__init__(update_bool)
 
     def grab_player_USID_from_FPLID(self, fpl_player_id):
-        return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_player_data) if x["fpl"]["id"] == fpl_player_id), None)
+        return next((x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == fpl_player_id), None)
         
     def grab_team_USID_from_FPLID(self, fpl_player_id):
-        return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
+        return next((x["understat"]["id"] for x in iter(self.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
         
     def grab_team_USname_from_FPLID(self, fpl_player_id):
-        return next((x["understat"]["id"] for x in iter(self.api_understat_parser.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
+        return next((x["understat"]["id"] for x in iter(self.understat_to_fpl_team_data) if x["fpl"]["id"] == fpl_player_id), None)
 
     def fetch_team_xg_against_teams_data(self, fpl_team_id) -> list:
         """
@@ -616,7 +576,7 @@ class UnderStatHelperFns:
         Returns:
             list: List of dictionaries, where each dictionary represents each gameweek, associated xG data and the team faced
         """
-        team_match_data = self.api_understat_parser.understat_team_match_data[fpl_team_id]
+        team_match_data = self.understat_team_match_data[fpl_team_id]
         xg_data = []
         for gw, data in enumerate(team_match_data):
             side = data['side']
@@ -648,7 +608,7 @@ class UnderStatHelperFns:
         cols_to_omit = ['h_a', 'result', 'date', 'id', 'title']
         
         compiled_team_data = []
-        for _, team_data in self.api_understat_parser.understat_team_data.items():
+        for _, team_data in self.understat_team_data.items():
             temp_data = {'id': team_data['id'], 'title': team_data['title']}
             for key, values in team_data['history'].items():
                 if key not in cols_to_omit:
@@ -657,7 +617,6 @@ class UnderStatHelperFns:
                 else: continue
             compiled_team_data.append(temp_data)
         return compiled_team_data
-
 
 #     def fetch_player_shots_against_teams(self, fpl_player_id, TEAM_AGAINST_ID):
 #         player_shot_data = self.understat_player_shot_data_group[fpl_player_id]
