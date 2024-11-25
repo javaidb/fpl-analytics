@@ -18,24 +18,24 @@ def create_search_widget(entries):
             if search_term == "*":
                 print("All entries:")
                 if isinstance(entries, dict):
-                    for key, value in entries.items():
+                    for key, value in sorted(entries).items():
                         print(f"{key}: {value}")
                 elif isinstance(entries, list):
-                    for entry in entries:
+                    for entry in sorted(entries):
                         print(entry)
             elif search_term:
                 print(f"Results for '{search_term}':")
                 if isinstance(entries, dict):
                     matches = {key: value for key, value in entries.items() if search_term.lower() in key.lower()}
                     if matches:
-                        for key, value in matches.items():
+                        for key, value in sorted(matches).items():
                             print(f"{key}: {value}")
                     else:
                         print("No matching keys found.")
                 elif isinstance(entries, list):
                     matches = [entry for entry in entries if search_term.lower() in entry.lower()]
                     if matches:
-                        for match in matches:
+                        for match in sorted(matches):
                             print(f"{match}")
                     else:
                         print("No matching entries found.")
