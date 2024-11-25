@@ -2,6 +2,7 @@ import os
 import ast
 import difflib
 import numpy as np
+import pandas as pd
 
 from src.functions.data_exporter import output_data_to_json, grab_path_relative_to_root
 
