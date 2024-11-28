@@ -1,13 +1,13 @@
 import os
 import ast
-import difflib
 import numpy as np
 import pandas as pd
+import difflib
 
 from src.functions.data_exporter import output_data_to_json, grab_path_relative_to_root
+from src.functions.helper_utils import initialize_local_data
 
-from src.functions.data_builder import FPLRawDataCompiler
-from src.functions.raw_data_fetcher import UnderstatFetcher
+from src.functions.data_builder import FPLRawDataCompiler, UnderstatRawDataCompiler
 
 from collections import defaultdict
 import asyncio
@@ -71,8 +71,8 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
         return {"bgws": {k: v for k, v in blank_gameweeks.items() if v},
                 "dgws": {k: v for k, v in double_gameweeks.items() if v}}
 
-    def grab_player_name(self, idx):
-        return self.compile_player_data([idx])[idx]['web_name']
+    def grab_player_name_fpl(self, idx):
+        return self.raw_data['elements'][idx]['web_name']
 
     def grab_player_value(self, idx):
         return self.compile_player_data([idx])[idx]['value'][-1][-1]/10
@@ -255,7 +255,7 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
             for i, match in enumerate(best_matches):
                 name_str = f"{match['web_name']} [{match['team_short_name']}] ({match['first_name']} {match['second_name']})"
                 print(f"{i + 1}: {name_str} ({match['score']})")
-            choice = input(f"Enter the number of the match for '{input_string}' you want to select (or press Enter to skip): ")
+            choice = input(f"Enter the number of the match for '{input_string}' you want to select (or press Enter to skip):")
             if choice.isdigit() and int(choice) <= len(best_matches):
                 return best_matches[int(choice) - 1]["id"]
             if choice.strip() == "":
@@ -268,7 +268,7 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
 #================================================================================================================================================================
 #=================================================================== USER INFO FETCHING =========================================================================
 #================================================================================================================================================================
-         
+        
     def get_player_points_history(self, user_id):
         user_data = self.fetch_data_from_api(f'entry/{user_id}/history/')
         points_history = []
@@ -373,7 +373,7 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
             pos = self.grab_player_pos(idx)
             if pos not in team_dict:
                 team_dict[pos]=[]
-            name = self.grab_player_name(idx)
+            name = self.grab_player_name_fpl(idx)
             team_dict[pos].append(name)
         gkps = team_dict['GKP']
         defs = team_dict['DEF']
@@ -457,8 +457,8 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
                         a = changes[pos]['0']
                         b = changes[pos]['1']
                         for i,x in enumerate(a):
-                            b4 = self.grab_player_name(x)
-                            b5 = self.grab_player_name(b[i])
+                            b4 = self.grab_player_name_fpl(x)
+                            b5 = self.grab_player_name_fpl(b[i])
                             print(f'{b4} ({pos}) -> {b5} ({pos})')
             if chng == 0 :
                 print('Managers have made no changes')
@@ -517,10 +517,10 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
         inlist = sorted(tally_dict['IN'].items(), key=lambda x:x[1], reverse=True)
         print('\n---------- OUT -----------\n')
         for a,b in outlist:
-            print(f'{self.grab_player_name(a)} -- {b}/{entries}')
+            print(f'{self.grab_player_name_fpl(a)} -- {b}/{entries}')
         print('\n---------- IN -----------\n')
         for c,d in inlist:
-            print(f'{self.grab_player_name(c)} -- {d}/{entries}')
+            print(f'{self.grab_player_name_fpl(c)} -- {d}/{entries}')
         return
 
     def display_beacon_tallies_this_gw(self, player_ids: list):
@@ -546,12 +546,12 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
                 tier = '\033[36m'
             else:
                 tier = ''
-            print(f'{self.helper_fns.grab_player_name(key)} -- {tier}{value}\033[0m / {entries}')
+            print(f'{self.grab_player_name_fpl(key)} -- {tier}{value}\033[0m / {entries}')
         return
     
-class UnderStatHelperFns(UnderstatFetcher):
-    def __init__(self, update_bool):
-        super().__init__(update_bool)
+class UnderstatDataInterpreter(UnderstatRawDataCompiler):
+    def __init__(self, fpl_helper_fns, update_bool):
+        super().__init__(fpl_helper_fns, update_bool)
 
     def grab_player_USID_from_FPLID(self, fpl_player_id):
         return next((x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == fpl_player_id), None)
