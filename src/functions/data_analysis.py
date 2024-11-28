@@ -6,7 +6,7 @@ import json
 import os
 import json
 
-from src.functions.helper_fns import FPLDataConsolidationInterpreter
+from src.functions.generated_helper_fns import FPLDataConsolidationInterpreter, UnderstatDataInterpreter
 
 helper_fns_fpl = FPLDataConsolidationInterpreter()
 
@@ -22,7 +22,7 @@ class FPLDataAnalytics():
         # self.initialize_decisions()
     
     def _compile_personal_team_data(self):
-        r = self.helper_fns.personal_fpl_raw_data["latest_picks"]
+        r = self.helper_fns.raw_personal_fpl_data["latest_picks"]
         fpl_team_ids = set([x["element"] for x in r["picks"]])
         return self.helper_fns.compile_player_data(fpl_team_ids)
 
@@ -501,3 +501,8 @@ class FPLDataAnalytics():
         upload_potentials()
         upload_beacon_teams()
         compile_returns()
+
+class UnderstatDataAnalytics():
+    def __init__(self, fpl_helper_fns, update_bool = False):
+        self.update_bool = update_bool
+        self.helper_fns = UnderstatDataInterpreter(fpl_helper_fns, update_bool)
