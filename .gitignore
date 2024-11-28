@@ -20,6 +20,8 @@ cached_data/
 figures/
 images/
 
-
 # Ignore local archived functions
 src/functions/archived/
+
+# Ignore venvs
+.venv_fpl
