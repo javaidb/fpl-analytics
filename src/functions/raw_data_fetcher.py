@@ -38,7 +38,7 @@ class FPLFetcher:
         self.raw_element_summary = {}
         self.config_data = self._get_config_data()
         self.rival_ids = self._fetch_rivals_based_on_pts()
-        self.personal_fpl_raw_data = self._fetch_personal_fpl_data()
+        self.raw_personal_fpl_data = self._fetch_personal_fpl_data()
         self.fixtures = self._fetch_fixtures()
         # self.blanks, self.dgws = self.look_for_blanks_and_dgws()
         self.rival_stats = self._tabulate_rival_stats(self._get_beacon_ids())
@@ -240,59 +240,46 @@ class FPLFetcher:
             rival_ids_data[rival_id]['team'] = [i['element'] for i in r['picks']]
         return rival_ids_data
 
-class UnderstatFetcher(FPLFetcher):
+class UnderstatFetcher():
 
-    def __init__(self, update_and_export_data):
-        super().__init__()
-        self.understat_ops = initialize_local_data(self, [
+    def __init__(self, fpl_helper_fns, update_and_export_data):
+        self.current_szn = "2025"
+        initialize_local_data(self, [
             {
-                "function": self._build_understat_team_data,
-                "attribute_name": "understat_team_data",
-                "file_name": "team_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/team",
+                "function": self._fetch_understat_team_data,
+                "attribute_name": "understat_team_data_raw",
+                "file_name": "team_data_raw",
+                "export_path": f"cached_data/understat/{fpl_helper_fns.season_year_span_id}/team",
              },
             {
-                "function": self._match_fpl_to_understat_teams,
-                "attribute_name": "understat_to_fpl_team_data",
-                "file_name": "understat_to_fpl_team_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/team",
+                "function": self._fetch_understat_team_shot_data,
+                "attribute_name": "understat_team_shot_data_raw",
+                "file_name": "team_shot_data_raw",
+                "export_path": f"cached_data/understat/{fpl_helper_fns.season_year_span_id}/team"
              },
             {
-                "function": self._build_understat_team_shot_data,
-                "attribute_name": "understat_team_shot_data",
-                "file_name": "team_shot_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/team"
+                "function": self._fetch_understat_team_match_data,
+                "attribute_name": "understat_team_match_data_raw",
+                "file_name": "team_match_data_raw",
+                "export_path": f"cached_data/understat/{fpl_helper_fns.season_year_span_id}/team"
              },
             {
-                "function": self._build_understat_team_match_data,
-                "attribute_name": "understat_team_match_data",
-                "file_name": "team_match_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/team"
+                "function": self._fetch_understat_player_data,
+                "attribute_name": "understat_player_data_raw",
+                "file_name": "player_data_raw",
+                "export_path": f"cached_data/understat/{fpl_helper_fns.season_year_span_id}/players"
              },
             {
-                "function": self._build_understat_player_data,
-                "attribute_name": "understat_player_data",
-                "file_name": "player_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/players"
-             },
-            {
-                "function": self._match_fpl_to_understat_players,
-                "attribute_name": "understat_to_fpl_player_data",
-                "file_name": "understat_to_fpl_player_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/players",
-                "update_bool_override": True,
-             },
-            {
-                "function": self._build_understat_player_shot_data,
+                "function": self._fetch_understat_player_shot_data,
                 "attribute_name": "understat_player_shot_data_raw",
-                "file_name": "player_shot_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/players"
+                "file_name": "player_shot_data_raw",
+                "export_path": f"cached_data/understat/{fpl_helper_fns.season_year_span_id}/players"
              },
             {
-                "function": self._build_understat_player_match_data,
-                "attribute_name": "understat_player_match_data",
-                "file_name": "player_match_data",
-                "export_path": f"cached_data/understat/{self.season_year_span_id}/players"
+                "function": self._fetch_understat_player_match_data,
+                "attribute_name": "understat_player_match_data_raw",
+                "file_name": "player_match_data_raw",
+                "export_path": f"cached_data/understat/{fpl_helper_fns.season_year_span_id}/players"
              }
         ], update_and_export_data)
 
@@ -300,14 +287,14 @@ class UnderstatFetcher(FPLFetcher):
 #================================================================ BUILD UNDERSTAT TEAM DATA =====================================================================
 #================================================================================================================================================================
 
-    def _build_understat_team_data(self):
+    def _fetch_understat_team_data(self):
             
         async def fetch_team_data():
             async with aiohttp.ClientSession() as session:
                 understat = Understat(session)
                 teams = await understat.get_teams(
                     league_name='epl', 
-                    season='2024'
+                    season=self.current_szn
                 )
                 return teams
                 
@@ -328,9 +315,9 @@ class UnderstatFetcher(FPLFetcher):
             compiled_team_data[raw_team_data["id"]]['history'] = temp_data
         return compiled_team_data
 
-    def _build_understat_team_shot_data(self):
+    def _fetch_understat_team_shot_data(self):
         
-        async def fetch_team_shot_data(team_data, season="2024"):
+        async def fetch_team_shot_data(team_data, season=self.current_szn):
             async with aiohttp.ClientSession() as session:
                 understat = Understat(session)
                 player = await understat.get_team_stats(
@@ -349,14 +336,14 @@ class UnderstatFetcher(FPLFetcher):
                     pbar.update(1)
             return results
         
-        understat_team_identifiers = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data.values()]
+        understat_team_identifiers = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data_raw.values()]
         loop = asyncio.get_event_loop()
         all_team_match_data = loop.run_until_complete(fetch_all_team_shot_data(understat_team_identifiers))
         return all_team_match_data
 
-    def _build_understat_team_match_data(self):
+    def _fetch_understat_team_match_data(self):
         
-        async def fetch_team_match_data(team_data, season="2024"):
+        async def fetch_team_match_data(team_data, season=self.current_szn):
             async with aiohttp.ClientSession() as session:
                 understat = Understat(session)
                 player = await understat.get_team_results(
@@ -375,154 +362,55 @@ class UnderstatFetcher(FPLFetcher):
                     pbar.update(1)
             return results
         
-        understat_team_identifiers = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data.values()]
+        understat_team_identifiers = [{"id": int(x['id']), "name": x['title']} for x in self.understat_team_data_raw.values()]
         loop = asyncio.get_event_loop()
         all_team_match_data = loop.run_until_complete(fetch_all_team_match_data(understat_team_identifiers))
         return all_team_match_data
 
 #================================================================================================================================================================
-#===================================================================== MATCH FPL TO UNDERSTAT ===================================================================
-#================================================================================================================================================================
-
-    def _match_fpl_to_understat_teams(self):
-        teams = self.raw_data['teams']
-        fpl_data = [{**{param_str: param_val for param_str, param_val in team.items() if param_str in ['id', 'name']}} for team in teams]
-
-        understat_nums_unsorted = [{
-            "id": int(x['id']), 
-            "name": x['title']
-        } 
-        for x in self.understat_team_data.values()]
-        understat_data = sorted(understat_nums_unsorted, key=lambda x: x["name"])
-
-        return [{
-            "fpl": d1, 
-            "understat": d2
-        } 
-        for d1, d2 in zip(fpl_data, understat_data)]
-    
-    def _match_fpl_to_understat_players(self):
-
-        matched_data = []
-        for understat_player_info in self.understat_player_data:
-            team_name_list = understat_player_info["team_title"].split(",") #Account for cases where player switched teams in PL
-            fpl_team_id_list = [next(x["fpl"]["id"] for x in iter(self.understat_to_fpl_team_data) if x["understat"]["name"] == team_name) for team_name in team_name_list]
-            matched_fpl_player_id = self.helper_fns.find_best_match(understat_player_info["player_name"], fpl_team_id_list)
-            if matched_fpl_player_id is not None:
-                matched_data.append({
-                    "fpl": {
-                        "id": int(matched_fpl_player_id),
-                        "name": self.helper_fns.grab_player_name(int(matched_fpl_player_id)),
-                    },
-                    "understat": {
-                        "id": int(understat_player_info["id"]),
-                        "name": understat_player_info["player_name"],
-                    }
-                })
-        return matched_data
-
-#================================================================================================================================================================
 #================================================================ BUILD UNDERSTAT PLAYER DATA ===================================================================
 #================================================================================================================================================================
 
-    def _build_understat_player_data(self):
+    def _fetch_understat_player_data(self):
 
         async def fetch_league_players():
             async with aiohttp.ClientSession() as session:
                 understat = Understat(session)
                 players = await understat.get_league_players(
                     league_name='epl', 
-                    season='2023'
+                    season=self.current_szn
                 )
                 return players
                 
         loop = asyncio.get_event_loop()
         return loop.run_until_complete(fetch_league_players())
 
-    # def _build_understat_player_shot_data(self):
-
-    #     @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), retry_error_callback=lambda x: isinstance(x, TimeoutError))
-    #     async def fetch_player_shot_data(understat_player_id):
-    #         try:
-    #             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
-    #                 understat = Understat(session)
-    #                 player_shot_data = await understat.get_player_shots(
-    #                     player_id=understat_player_id,
-    #                 )
-    #                 return understat_player_id, player_shot_data
-    #         except aiohttp.ClientError as e:
-    #             print(f"Error fetching player shot data for player ID {understat_player_id}: {e}")
-    #             return understat_player_id, None
+    def _fetch_understat_player_shot_data(self):
+        player_shot_data = {}
         
-    #     async def fetch_all_player_shot_data(player_ids):
-    #         tasks = [fetch_player_shot_data(player_id) for player_id in player_ids]
-    #         results = {}
-    #         with tqdm_notebook(total=len(player_ids), desc = "Fetching player shot data") as pbar:
-    #             for completed_task in asyncio.as_completed(tasks):
-    #                 player_id, result = await completed_task
-    #                 results[player_id] = result
-    #                 pbar.update(1)
-    #         return results
-
-    #     all_matched_understat_player_ids = [x['understat']['id'] for x in self.understat_to_fpl_player_data]
-    #     loop = asyncio.get_event_loop()
-    #     all_player_shot_data = loop.run_until_complete(fetch_all_player_shot_data(all_matched_understat_player_ids))
-    #     return all_player_shot_data
-    
-    def _build_understat_player_shot_data(self):
-
-        # async def main():
-        #     async with aiohttp.ClientSession() as session:
-        #         understat = Understat(session)
-        #         player = await understat.get_player_shots(
-        #             player_id=8562, 
-        #         )
-        #         return player
-        
-        # loop = asyncio.get_event_loop()
-        # fetched_data = loop.run_until_complete(main())
-
-        all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-        all_player_shot_data = {}
-        for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player shot data"):
-            with UnderstatClient() as understat:
-                understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-                all_player_shot_data[fpl_player_id] = understat.player(player=str(understat_id)).get_shot_data()
-        return all_player_shot_data
-
-    def _compile_understat_player_shot_data(self):
-
-        all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-        all_player_shot_data = {}
-        for fpl_player_id in all_matched_fpl_player_ids:
-            player_shot_data = self.understat_player_shot_data_raw[fpl_player_id]
-
-            season_threshold_start_str = next(x['deadline_time'] for x in iter(self.raw_data['events']))
-            def convert_dtstr_to_dt(input_str: str):
-                adjusted_str = datetime.fromisoformat(input_str.replace('Z', ''))
-                return datetime.strptime(adjusted_str.strftime('%Y-%m-%d'), '%Y-%m-%d')
-            relevant_player_shot_data = [x for x in player_shot_data if convert_dtstr_to_dt(x['date']) >= convert_dtstr_to_dt(season_threshold_start_str)]
-
-            df = pd.DataFrame(relevant_player_shot_data)
-            grouped = df.groupby(['result', 'match_id','h_team','a_team']).size().reset_index(name='count')
-            chance_summary = grouped.pivot_table(index=['match_id','h_team','a_team'], columns='result', values='count', fill_value=0)
-            chance_summary.reset_index(inplace=True)
+        with UnderstatClient() as understat:
+            # Get data for all players in the Premier League for the current season
+            league_player_data = understat.league(league="EPL").get_player_data(season=self.current_szn)
             
-            hits_df = df[df["result"] == "Goal"]
-            grouped = hits_df.groupby(['shotType', 'match_id','h_team','a_team']).size().reset_index(name='count')
-            goal_summary = grouped.pivot_table(index=['match_id','h_team','a_team'], columns='shotType', values='count', fill_value=0)
-            goal_summary.reset_index(inplace=True)
-
-            all_player_shot_data[fpl_player_id] = pd.merge(chance_summary, goal_summary, on=['match_id','h_team','a_team'], how='outer').to_dict(orient='records')
-        return all_player_shot_data
-    
-    def _build_understat_player_match_data(self):
-
-        all_matched_fpl_player_ids = [x['fpl']['id'] for x in self.understat_to_fpl_player_data]
-        all_player_match_data = {}
-        for fpl_player_id in tqdm_notebook(all_matched_fpl_player_ids, desc = "Building understat player match data"):
-            with UnderstatClient() as understat:
-                understat_id = next(x["understat"]["id"] for x in iter(self.understat_to_fpl_player_data) if x["fpl"]["id"] == int(fpl_player_id))
-                all_player_match_data[fpl_player_id] = understat.player(player=str(understat_id)).get_match_data()
-        return all_player_match_data
-    
+            # Iterate over each player and fetch their shot data
+            for player in tqdm_notebook(league_player_data, desc="Fetching Player Shot Data", unit="player"):
+                player_id = player['id']
+                shots = understat.player(player=player_id).get_shot_data()
+                player_shot_data[player_id] = shots
+        
+        return player_shot_data
+        
+    def _fetch_understat_player_match_data(self):
+        player_match_data = {}
+        
+        with UnderstatClient() as understat:
+            # Get data for all players in the Premier League for the current season
+            league_player_data = understat.league(league="EPL").get_player_data(season=self.current_szn)
+            
+            # Iterate over each player and fetch their shot data
+            for player in tqdm_notebook(league_player_data, desc="Fetching Player Match Data", unit="player"):
+                player_id = player['id']
+                shots = understat.player(player=player_id).get_match_data()
+                player_match_data[player_id] = shots
+        
+        return player_match_data
