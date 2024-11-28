@@ -1,0 +1,7 @@
+pandas
+tqdm
+ipywidgets
+understat
+understatapi
+scikit-learn
+matplotlib
