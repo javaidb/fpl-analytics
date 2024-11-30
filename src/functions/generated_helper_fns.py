@@ -72,7 +72,7 @@ class FPLDataConsolidationInterpreter(FPLRawDataCompiler):
                 "dgws": {k: v for k, v in double_gameweeks.items() if v}}
 
     def grab_player_name_fpl(self, idx):
-        return self.raw_data['elements'][idx]['web_name']
+        return next(x['web_name'] for x in self.raw_data['elements'] if x['id'] == idx)
 
     def grab_player_value(self, idx):
         return self.compile_player_data([idx])[idx]['value'][-1][-1]/10
