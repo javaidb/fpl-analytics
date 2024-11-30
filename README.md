@@ -25,9 +25,10 @@ This project is organized into several directories, each serving a specific purp
 This repo primarily works by processing data from various APIs and consolidating it through various modules and visualized via jupyter notebooks. General setup is as follows:
 
 - Clone this repository to your local machine.
-- Within src/config, make relevant changes within data_template.json AND rename data.json:
-   - "beacon_team_ids" - a custom feature to include rivals you would like to measure your team against, typically those with demonstrated success.
-   - "personal_team_id: - entry to include your personal FPL team ID (can be obtained through official FPL website).
+- Within src/config, rename data_template.json -> data.json.
+- Make the following adjustments to data.json:
+   - "beacon_team_ids" - a custom feature to include rival IDs you would like to measure your team against, typically those with demonstrated success.
+   - "personal_team_id: - entry to include your personal FPL team ID (use link [here](https://fpl.team/find-id/) to see how to find your FPL ID).
    - "personal_league_ids" - used to track statistics and ranks within leagues your FPL team belongs to (or whichever is entered within "personal_team_id").
 - Navigate to notebooks folder and open "visualize_metrics" within jupyter environment. Visualization and consolidation of FPL details are implemented through here.
 - To execute, simply hit run all.
