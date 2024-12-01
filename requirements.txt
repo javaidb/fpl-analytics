@@ -5,3 +5,6 @@ understat
 understatapi
 scikit-learn
 matplotlib
+plotly
+dash
+prettytable
