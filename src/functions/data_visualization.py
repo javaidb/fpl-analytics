@@ -1,11 +1,17 @@
-from prettytable import PrettyTable
-import matplotlib.pyplot as plt
-from itertools import cycle
 import numpy as np
+import statistics
+from collections import defaultdict
+from itertools import cycle
 import textwrap
 from PIL import Image
-from collections import defaultdict
-import statistics
+from prettytable import PrettyTable
+
+import matplotlib.pyplot as plt
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from dash import Dash, html, dcc, callback, Input, Output
+
 from src.config import config
 from src.functions.data_exporter import grab_path_relative_to_root
 
@@ -441,6 +447,92 @@ class FigureExporter():
         figs_dir_relative = grab_path_relative_to_root(f"figures/{league_name}", relative=True, create_if_nonexistent=True)
         plot_obj.savefig(f'{figs_dir_relative}/league_{figure_png_name}.png', bbox_inches='tight', facecolor=plot_settings.get("rgb_setting_bg"), edgecolor=plot_settings.get("rgb_setting_bg"), transparent=True)
 
+class DashboardVisualizer():
+    def __init__(self, fpl_helper_fns=None, understat_helper_fns=None):
+        self.fpl_helper_fns = fpl_helper_fns
+        self.understat_helper_fns = understat_helper_fns
 
+    def update_graph_multiple_options(
+        self, 
+        data,
+        dash_settings,
+        selection_options_for_y_axis
+    ):
+
+        if not selection_options_for_y_axis:
+            return go.Figure()
+        
+        n_rows = len(selection_options_for_y_axis)
+        fig = make_subplots(rows=n_rows, cols=1, shared_xaxes=True, vertical_spacing=0.05)
+        for i, selected_y in enumerate(selection_options_for_y_axis, start=1):
+            for key, d in data.items():
+                understat_id = key
+                fpl_team_id = next(x['fpl']['id'] for x in self.understat_helper_fns.understat_to_fpl_team_data if int(x['understat']['id']) == int(understat_id))
+                fpl_team_name = self.fpl_helper_fns.grab_team_name_short(fpl_team_id)
+                fpl_color_scheme_rgb = config.TEAM_COLOR_SCHEMES.get(fpl_team_name).get('line')
+                fig.add_trace(
+                    go.Scatter(
+                        x=d['history'][dash_settings['shared_key_x_axis']],
+                        y=d['history'][selected_y],
+                        mode='lines+markers',
+                        name=f"{d['title']}",
+                        legendgroup=f"{d['title']}",
+                        line=dict(color=f"rgb{fpl_color_scheme_rgb}"),
+                        text=d['title'],
+                        showlegend=(i == 1)
+                    ),
+                    row=i, col=1
+                )
+            
+            fig.update_yaxes(title_text=selected_y, row=i, col=1)
+        
+        fig.update_layout(
+            height=900,  # Fixed height
+            title_text="Multiple Y-Axis Plots",
+            showlegend=True
+        )
+        fig.update_xaxes(title_text=dash_settings['shared_key_x_axis'].capitalize(), row=n_rows, col=1)
+        
+        return fig
+
+
+    def generate_dash(
+        self,
+        data,
+        dash_settings={
+           'options': 'multiple',
+           'shared_key_x_axis': 'date'
+        },
+        port=8050
+    ):
+        app = Dash(__name__)
+        y_options = sorted(list(set(key for d in data.values() for key in d['history'].keys() if key != dash_settings['shared_key_x_axis'])))
+
+        app.layout = html.Div([
+            dcc.Dropdown(
+                id='y-axis-dropdown',
+                options=[{'label': key, 'value': key} for key in y_options],
+                value=[y_options[0]],  # Default to first option
+                multi=True  # Allow multiple selections
+            ),
+            dcc.Graph(id='main-graph')
+        ])
+
+        @callback(
+            Output('main-graph', 'figure'),
+            Input('y-axis-dropdown', 'value')
+        )
+
+        def callback_wrapper(selection_options_for_y_axis):
+            if dash_settings['options'] == 'multiple':
+                return self.update_graph_multiple_options(data, dash_settings, selection_options_for_y_axis)
+
+        # Run the app in a new browser tab
+        port_num = port
+        app.run_server(mode='external', port=port_num)
+
+        url = f"http://127.0.0.1:{port_num}"
+        return html.A("Click here to open the app", href=url, target="_blank")
+    
 #========================================================================================================================================================================================
 #========================================================================================================================================================================================
