@@ -9,12 +9,21 @@ This project is organized into several directories, each serving a specific purp
 ```
     fpl-analytics/
     ├── notebooks/           # Jupyter notebooks for interactive exploration
-    │   └── visualize_metrics.ipynb  # Main notebook for testing and visualization
+    │   └── visualize_metrics_fpl.ipynb  # Main notebook for testing and visualization of FPL data
+    │   └── visualize_metrics_understat.ipynb  # Main notebook for testing and visualization of Understat darta + FPL
     ├── src/                 # Destination for source code of various modules
     │   └── config/          # Initialization to cater to personal user
     │   │   └── config.py      # Settings regarding color schemes
     │   │   └── data_template.json      # Settings regarding personal FPL information to extract from (Need to rename as data.json once cloned)
     │   └── functions/       # Modules and associated functions by which API data is extracted, consolidated and analyzed
+    │   │   └── raw_data_fetcher.py      # Module for fetching raw data from APIs and assigning to variables
+    │   │   └── data_builder.py      # Module for building relations ahd consolidations of and between raw data
+    │   │   └── generated_helper_fns.py      # Module for extracting helper functions from newly fetched/constructed datasets, for use later on
+    │   │   └── data_analysis.py      # Module for interpreting and transforming data for actionable insights
+    │   │   └── data_visualization.py      # Module for any and all data visualization
+    │   │   └── data_exporter.py      # Module for exporting data to proper formats
+    │   │   └── helper_utils.py      # Standalone module for general helper utility functions
+    │   │   └── notebook_utils.py      # Standalone module for general notebook utility functions
     ├── tests/               # Sample unit testing modules
     ├── README.md            # Project overview and documentation
     └── requirements.txt     # List of dependencies required to run the project
