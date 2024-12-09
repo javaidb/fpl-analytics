@@ -26,34 +26,291 @@ class FPLDataAnalytics():
         fpl_team_ids = set([x["element"] for x in r["picks"]])
         return self.helper_fns.compile_player_data(fpl_team_ids)
 
-    def score_players_on_form(self, list_of_ids: list) -> dict:
-        
-        def convert_to_binary(points: list):
-            return [2 if x > 9 else 1 if x > 3 and x <= 9 else 0 for x in points]
-        
-        full_data = {}
-        for idx in list_of_ids:
-            full_data[idx] = convert_to_binary([x for x in self.helper_fns.grab_player_hist(idx)])
+#==================================================================================================================================
+#========================================================== ELO RANKINGS ==========================================================
+#==================================================================================================================================
 
-        time_periods = [6, 4, 2] # Define the number of time periods to consider
-        weights = [0.3, 0.3, 0.4]  # Weights for each time period
+    def _calculate_expected_score(self, player_score, average_score):
+        """Calculate the expected score based on player's score and average score."""
+        return player_score / average_score
 
-        player_mean_scores = {} # Calculate mean score for each player for each time period
-        for player, categories in full_data.items():
-            mean_scores = [np.mean(categories[-period:]) for period in time_periods]
-            player_mean_scores[player] = mean_scores
+    def _update_elo(self, current_rating, player_score, average_score, k_factor=30, weight=1, adjustment_factor=0):
+        """Update the Elo rating based on a single round's score."""
+        expected_score = self._calculate_expected_score(player_score, average_score) # Apply penalty if the score is in the "Bad" bin
+        new_rating = current_rating + k_factor * (player_score - expected_score) * weight + adjustment_factor
+        return new_rating
+
+    def _bin_score(self, score):
+        """Bin the score into categories."""
+        if score < 4:
+            return 1  # Bad
+        elif 4 <= score <= 6:
+            return 2  # Average
+        elif 7 <= score <= 9:
+            return 3  # Good
+        else:
+            return 4  # Excellent
+
+    def _update_elo_with_fdr(self, current_rating, player_score, average_score, fdr, home_away, k_factor=30, weight=1, adjustment_factor=0):
+        """Update the Elo rating considering Fixture Difficulty Rating (FDR) and home/away status."""
+        expected_score = self._calculate_expected_score(player_score, average_score)
+        
+        # Determine home/away factor
+        home_away_factor = 0 if home_away == 1 else 200 if home_away == 0 else 0
+        
+        # Calculate FDR adjustment
+        fdr_adjustment = self._calculate_fdr_adjustment(fdr, home_away_factor)
+        
+        # Update new rating with both adjustments
+        new_rating = current_rating + k_factor * (player_score - expected_score) * weight + adjustment_factor + fdr_adjustment
+        return new_rating
+
+    def _calculate_fdr_adjustment(self, fdr, home_away_factor=0, base_adjustment=20):
+        """
+        Calculate the adjustment factor based on Fixture Difficulty Rating (FDR).
+        
+        Parameters:
+        - fdr: The Fixture Difficulty Rating for the upcoming fixture.
+        - home_away_factor: Adjustment based on whether the match is home or away.
+        - base_adjustment: The base adjustment value to apply (default is 5).
+        
+        Returns:
+        - adjustment: The calculated adjustment factor based on FDR.
+        """
+        # Adjustments can be positive or negative based on FDR and home/away factor
+        adjustment = base_adjustment * (fdr - 3) + home_away_factor
+        return adjustment
+
+    def _calculate_current_elo(self, scores, average_scores, fdrs, h_a, initial_rating):
+        """Calculate the current Elo rating based on scores from all rounds."""
+        weights = [2.5, 2.0, 1.5, 1.0, 0.8, 0.5]
+        
+        current_rating = initial_rating
+        adjustment_factor = 0
+        consecutive_bad_count = 0
+        consecutive_good_count = 0
+        # print(f"{scores} {average_scores}")
+        for i in range(len(scores)):
+            player_score = scores[i]
+            weight = weights[i] if i < len(weights) else 0.5  # Default weight for older scores
+            
+            # Determine the bin of the current score
+            current_bin = self._bin_score(player_score)
+        
+            # Adjust adjustment factor based on current bin
+            if current_bin == 1:
+                # Increment consecutive bad count and apply negative adjustment
+                consecutive_bad_count += 1
+                if consecutive_bad_count >= 2: consecutive_good_count = 0
+                # Penalty increases with consecutive bad scores; more for recent ones
+                penalty = (-1*4**consecutive_bad_count) * (1 + (len(scores) - i) / len(scores))  # More penalty for recent bad scores
+                adjustment_factor += penalty
+                
+            elif current_bin == 2:
+                # Reset consecutive bad count and increase good count
+                consecutive_bad_count = 0
+                consecutive_good_count += 1
+                
+                # Increase bonus for good performances (average)
+                adjustment_factor += min(2**consecutive_good_count, 2000)  # Cap bonus to +20
+                
+            elif current_bin == 3:
+                # Reset bad count and increase good count
+                consecutive_bad_count = 0
+                consecutive_good_count += 1
+                
+                # Increase bonus for excellent performances
+                adjustment_factor += min(4**consecutive_good_count, 2000)  # Cap bonus to +30
+                
+            elif current_bin == 4:
+                # Reset bad count and increase good count
+                consecutive_bad_count = 0
+                consecutive_good_count += 1
+                
+                # Increase bonus for excellent performances
+                adjustment_factor += min(8**consecutive_good_count, 2000)  # Cap bonus to +30
+                
+            current_rating = self._update_elo_with_fdr(current_rating, player_score, average_scores[i], fdrs[i], h_a[i], weight=weight, adjustment_factor=adjustment_factor)
+        
+        return current_rating
+
+    def score_players_on_form(self, list_of_ids: list, lookback_period: int) -> dict:
+        
+        full_data = self.helper_fns.compile_player_data(list_of_ids)
+
         player_ratings = {}
-        for player, mean_scores in player_mean_scores.items():
-            weighted_average = np.average(mean_scores, weights=weights)
-            player_ratings[player] = {'score': round(weighted_average,2)}
-        return dict(sorted(player_ratings.items(), key=lambda x: x[1]['score'], reverse=True))
+        for player_id, player_data in full_data.items():
+            points = [x[1] for x in player_data['total_points']]
+            fdrs = [self.helper_fns.team_rank(x[1]) for x in player_data['opponent_team']]
+            h_a = [x[1] for x in player_data['was_home']]
+            initial_elo = 500
+            average_scores = [6]*len(points)
+            # print(f"TEMP: {points} {average_scores}")
+            # current_elo_after_round_4 = 0
+            elo_prior_to_lookback = self._calculate_current_elo(
+                points[:(len(points)-lookback_period)],
+                average_scores[:(len(points)-lookback_period)],
+                fdrs[:(len(points)-lookback_period)],
+                h_a[:(len(points)-lookback_period)],
+                initial_elo
+            )
+            present_elo = self._calculate_current_elo(
+                points[(len(points)-lookback_period):],
+                average_scores[(len(points)-lookback_period):],
+                fdrs[(len(points)-lookback_period):],
+                h_a[(len(points)-lookback_period):],
+                initial_elo
+            )
+            final_elo_weighted = 0.9*present_elo + 0.1*elo_prior_to_lookback
+            # print(f"{player_id} {points} {average_scores} {current_elo_after_round_4} {final_elo}")
+            player_ratings[player_id] = {
+                'initial_elo': round(initial_elo,2),
+                'elo_prior_to_lookback': round(elo_prior_to_lookback,2),
+                'present_elo': round(present_elo,2),
+                'final_elo_weighted': round(final_elo_weighted,2)
+            }
+        return dict(sorted(player_ratings.items(), key=lambda x: x[1]['present_elo'], reverse=True))
 
-    def score_players_on_fixtures(self, list_of_ids: list) -> dict:
+#========================================================== FIXTURE RANKINGS ==========================================================
+
+    def _calculate_fixture_score(self, past_data, future_data, weights={'w1':0.7, 'w2':0.2, 'w3':0.1}, gains={'fdr':100}):
+        """
+        Calculate the base score based on Fixture Difficulty Rating (FDR).
         
-        gameweek_data = self.helper_fns.grab_upcoming_fixtures(list_of_ids)
-        full_data = {key: {'opponent_teams': [d['opponent_team'] for d in value if d['opponent_team'] is not None], 
-            'fdrs': [self.helper_fns.team_rank(d['opponent_team']) for d in value if d['opponent_team'] is not None], 
-            'is_home': [d['is_home'] for d in value if d['is_home'] is not None]} for key, value in gameweek_data.items()}
+        Parameters:
+        - fdr: The Fixture Difficulty Rating for the fixture (1 to 5).
+        
+        Returns:
+        - base_score: The calculated base score (0 to 100).
+        """
+        #============== PAST ==============
+        ppg_data = self._calculate_ppg_stats(past_data)
+        # print(f"ppg_data: {ppg_data}")
+        fdr_data_past = self._calculate_fdr_stats(past_data['fdr'], past_data['h_a'])
+        history_index_data = self._calculate_history_index_stats(ppg_data, fdr_data_past)
+        # print(f"fdr_data_past: {fdr_data_past}")
+        #============== PRESENT ==============
+        fdr_data_future = self._calculate_fdr_stats(future_data['fdr'], future_data['h_a'])
+        # print(f"fdr_data_future: {fdr_data_future}")
+        round_score = 0
+        for h_a, fdr_data in fdr_data_future.items():
+            # history_index_factor = history_index_data[h_a]['base_factor']*history_index_data[h_a]['sig_fdr']
+            round_score += weights['w1']*gains['fdr']*(1-(fdr_data['avg']/5)) + weights['w2']*history_index_data[h_a]['base_factor'] + weights['w3']*history_index_data[h_a]['player_factor']
+        return round_score
+
+    def _calculate_history_index_stats(self, ppg_data, fdr_data_past, gains={'k_base':100, 'k_plyr':100}):
+        return {
+            'h': {
+                'base_factor': gains['k_base']*ppg_data['h']['team']/(ppg_data['a']['team'] + ppg_data['h']['team']) if ((ppg_data['h']['team']>0) and (ppg_data['a']['team']>0)) else 0,
+                'player_factor': gains['k_plyr']*ppg_data['h']['player']/(ppg_data['a']['player'] + ppg_data['h']['player']) if ((ppg_data['h']['player']>0) and (ppg_data['a']['player']>0)) else 0,
+                'sig_fdr': 1-(fdr_data_past['h']['avg']/5),
+            },
+            'a': {
+                'base_factor': gains['k_base']*ppg_data['a']['team']/(ppg_data['a']['team'] + ppg_data['h']['team']) if ((ppg_data['h']['team']>0) and (ppg_data['a']['team']>0)) else 0,
+                'player_factor': gains['k_plyr']*ppg_data['a']['player']/(ppg_data['a']['player'] + ppg_data['h']['player']) if ((ppg_data['h']['player']>0) and (ppg_data['a']['player']>0)) else 0,
+                'sig_fdr': 1-(fdr_data_past['a']['avg']/5),
+            }
+        }
+
+    def _calculate_fdr_stats(self, fdrs, h_a_s):
+        # print(f"FDRS: {fdrs}")
+        # print(f"h_a_s: {h_a_s}")
+        fdr_h = [fdr for fdr, h_a in zip(fdrs, h_a_s) if h_a[-1] == 1]
+        fdr_a = [fdr for fdr, h_a in zip(fdrs, h_a_s) if h_a[-1] == 0]
+        return {
+            'h': {
+                'data': fdr_h,
+                'avg': np.mean([x[-1] for x in fdr_h]),
+                'sum': np.sum([x[-1] for x in fdr_h])
+            },
+            'a': {
+                'data': fdr_a,
+                'avg': np.mean([x[-1] for x in fdr_a]),
+                'sum': np.sum([x[-1] for x in fdr_a])
+            }
+        }
+
+    def _calculate_ppg_stats(self, matches):
+        """
+        Calculate the home and away performance metrics for a team.
+
+        Parameters:
+        - matches: A list of dictionaries containing match results.
+
+        Returns:
+        - home_performance: Average points per game at home.
+        - away_performance: Average points per game away.
+        """
+        #============== TEAM ==============
+        team_pts_h = 0
+        team_pts_a = 0
+        team_games_h = 0
+        team_games_a = 0
+
+        def tabulate_match_points(team_a_score, team_h_score, h_a):
+            if (h_a == 1 and team_h_score > team_a_score) or (h_a == 0 and team_a_score > team_h_score):
+                return 3
+            elif team_h_score == team_a_score:
+                return 1
+            else:
+                return 0
+        
+        for i in range(0, len(matches['h_a'])):
+            try:
+                team_match_pts = tabulate_match_points(matches['team_a_score'][i][-1], matches['team_h_score'][i][-1], matches['h_a'][i][-1])
+            except:
+                continue
+            if matches['h_a'][i][-1] == 1:
+                team_pts_h += team_match_pts
+                team_games_h += 1
+            elif matches['h_a'][i][-1] == 0:
+                team_pts_a += team_match_pts
+                team_games_a += 1
+
+        team_ppg_h = team_pts_h / team_games_h if team_games_h > 0 else 0
+        team_ppg_a = team_pts_a / team_games_a if team_games_a > 0 else 0
+        
+        #============== PLAYER ==============
+        plyr_pts_h = 0
+        plyr_pts_a = 0
+        plyr_games_h = 0
+        plyr_games_a = 0
+        
+        for i in range(0, len(matches['h_a'])):
+            player_match_pts = matches['total_points'][i][-1]
+            if matches['h_a'][i][-1] == 1:
+                plyr_pts_h += player_match_pts
+                plyr_games_h += 1
+            elif matches['h_a'][i][-1] == 0:
+                plyr_pts_a += player_match_pts
+                plyr_games_a += 1
+
+        plyr_ppg_h = plyr_pts_h / plyr_games_h if plyr_games_h > 0 else 0
+        plyr_ppg_a = plyr_pts_a / plyr_games_a if plyr_games_a > 0 else 0
+        
+        return {
+            'h': {
+                'team': team_ppg_h,
+                'player': plyr_ppg_h
+            },
+            'a': {
+                'team': team_ppg_a,
+                'player': plyr_ppg_a
+            },
+        }
+
+    def score_players_on_fixtures(self, list_of_ids: list, lookback_period: int) -> dict:
+        
+        gameweek_data = self.helper_fns.grab_upcoming_fixtures(list_of_ids, games_ahead=lookback_period)
+        full_data = {
+            key: {
+                'opponent_teams': [d['opponent_team'] for d in value if d['opponent_team'] is not None], 
+                'fdrs': [(d['gameweek'], self.helper_fns.team_rank(d['opponent_team'])) for d in value if d['opponent_team'] is not None], 
+                'is_home': [(d['gameweek'], d['is_home']) for d in value if d['is_home'] is not None]
+            } for key, value in gameweek_data.items()
+        }
+
+        historical_data = self.helper_fns.compile_player_data(list_of_ids)
         
         player_ratings = {}
         for player_id, player_fixture_data in full_data.items():
@@ -64,25 +321,26 @@ class FPLDataAnalytics():
             if not home_away_info or not difficulty_ratings:
                 player_ratings[int(player_id)] = {'score': None}
             else:
-                # Weighing factors for the rating
-                difficulty_weights = {1: 4.5, 2: 4, 3: 3, 4: 1.5, 5: 0.5}  # Higher difficulty means a tougher match
-                home_weight = 1.2  # Weight for home games
-
-                # Calculate the weighted sum of difficulty ratings based on home/away
-                weighted_sum = sum(difficulty_weights[rating] * (home_weight if location == 'H' else 1)
-                                for rating, location in zip(difficulty_ratings, home_away_info))
+                # upcoming_fixtures = [(fdr,  h_a) for fdr,  h_a in zip(difficulty_ratings, home_away_info)]
+                player_future_data = {
+                    'fdr': difficulty_ratings,
+                    'h_a': home_away_info
+                }
                 
-                # Calculate the average weighted difficulty rating
-                average_weighted_difficulty = weighted_sum / len(difficulty_ratings)
+                player_historical_dict = historical_data[int(player_id)]
+                player_historical_data = {
+                    'h_a': player_historical_dict['was_home'],
+                    'team_a_score': player_historical_dict['team_a_score'],
+                    'team_h_score': player_historical_dict['team_h_score'],
+                    'fdr': [(x[0], self.helper_fns.team_rank(x[1])) for x in player_historical_dict['opponent_team']],
+                    'total_points': player_historical_dict['total_points'],
+                }
 
-                # Normalize the average weighted difficulty to get the rating in the range of 1 to 10
-                min_weighted_difficulty = min(difficulty_weights.values())
-                max_weighted_difficulty = max(difficulty_weights.values())
-                normalized_rating = ((average_weighted_difficulty - min_weighted_difficulty)
-                                    / (max_weighted_difficulty - min_weighted_difficulty)) * 9 + 1
-
-                # Ensure the rating is within the valid range of 1 to 10
-                player_ratings[int(player_id)] = {'score': round(max(1, min(normalized_rating, 10)), 3)}
+                fixture_score = self._calculate_fixture_score(player_historical_data, player_future_data)
+                # ppg_h_a = calculate_performance_metrics(player_historical_dict)
+                # print(f"{fpl_data_attributes.helper_fns.grab_player_name_fpl(int(player_id))} {home_performance_metric} {away_performance_metric}")
+                # average_fixture_score = calculate_adjusted_fixture_score(upcoming_fixtures, ppg_h_a)
+                player_ratings[int(player_id)] = {'score': round(fixture_score, 3)}
         return dict(
                     sorted(
                         player_ratings.items(),
@@ -91,15 +349,18 @@ class FPLDataAnalytics():
                     )
                 )
 
+#========================================================== CONSOLIDATE RANKINGS ==========================================================
 
-    def apply_scores_and_compile_prospects(self, list_of_ids: list):
-        form_score_data = self.score_players_on_form(self.helper_fns.player_ids)
-        fixture_score_data = self.score_players_on_fixtures(self.helper_fns.player_ids)
+    def apply_scores_and_compile_prospects(self, list_of_ids: list, lookback_period=6):
+        form_score_data = self.score_players_on_form(self.helper_fns.player_ids, lookback_period)
+        fixture_score_data = self.score_players_on_fixtures(self.helper_fns.player_ids, 4)
         # team_score_data = self.score_players_on_fixtures(self.api_parser.player_ids)
 
         df = pd.DataFrame.from_dict({
                 player_id: {
-                    'form_score': form_score_data[player_id]['score'],
+                    'elo_form_score_pres': form_score_data[player_id]['present_elo'],
+                    'elo_form_score_hist': form_score_data[player_id]['elo_prior_to_lookback'],
+                    'elo_form_score_net': form_score_data[player_id]['final_elo_weighted'],
                     'fixture_score': fixture_score_data[player_id]['score'],
                     'minutes_score': fixture_score_data[player_id]['score']
                 } 
@@ -108,12 +369,16 @@ class FPLDataAnalytics():
             orient='index').reset_index()
         
         df = df.rename(columns={'index': 'player_id'})
-        return df.sort_values(by=['form_score'], ascending=False)
+        return df.sort_values(by=['elo_form_score_pres'], ascending=False)
     
     def _compile_prospects(self, list_of_ids: list = None):
         if list_of_ids is None: list_of_ids = self.helper_fns.player_ids
         df = self.apply_scores_and_compile_prospects(list_of_ids)
-        return df.loc[df['form_score'] > 0.5]['player_id'].to_list()
+        df['player_name'] = df['player_id'].apply(self.helper_fns.grab_player_name_fpl)
+        df['player_pos'] = df['player_id'].apply(self.helper_fns.grab_player_pos)
+        df['player_team'] = df['player_id'].apply(self.helper_fns.grab_player_team)
+        return df
+        # return df.loc[df['form_score'] > 0.5]['player_id'].to_list()
 
 #============================================  FPL EVALUATIONS  ============================================
 
